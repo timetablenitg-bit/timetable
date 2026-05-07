@@ -1,38 +1,22 @@
-import nodemailer from "nodemailer";
-import { google } from "googleapis";
+import { MailerSend, EmailParams, Sender, Recipient } from "mailersend";
 import "dotenv/config";
 
-const oauth2Client = new google.auth.OAuth2(
-  process.env.OAUTH_CLIENT_ID,
-  process.env.OAUTH_CLIENT_SECRET,
-  "https://developers.google.com/oauthplayground",
-);
-
-oauth2Client.setCredentials({
-  refresh_token: process.env.GMAIL_REFRESH_TOKEN,
+const mailerSend = new MailerSend({
+  apiKey: process.env.MAILERSEND_API_KEY,
 });
 
 export const sendInviteEmail = async ({ to, name, acceptUrl }) => {
-  // Fresh access token every time — never expires
-  const accessToken = await oauth2Client.getAccessToken();
+  const sentFrom = new Sender(
+    `noreply@${process.env.MAILERSEND_DOMAIN}`,
+    "Faculty Portal",
+  );
 
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      type: "OAuth2",
-      user: process.env.GMAIL_USER,
-      clientId: process.env.OAUTH_CLIENT_ID,
-      clientSecret: process.env.OAUTH_CLIENT_SECRET,
-      refreshToken: process.env.GMAIL_REFRESH_TOKEN,
-      accessToken: accessToken.token,
-    },
-  });
+  const recipients = [new Recipient(to, name)];
 
-  await transporter.sendMail({
-    from: `"Faculty Portal" <${process.env.GMAIL_USER}>`,
-    to,
-    subject: "You're invited to join the Faculty Portal",
-    html: `
+  const emailParams = new EmailParams()
+    .setFrom(sentFrom)
+    .setTo(recipients)
+    .setSubject("You're invited to join the Faculty Portal").setHtml(`
       <div style="font-family:sans-serif;max-width:480px;margin:auto">
         <h2>Welcome, ${name}!</h2>
         <p>You've been invited by the admin to join the <strong>Faculty Portal</strong>.</p>
@@ -46,6 +30,7 @@ export const sendInviteEmail = async ({ to, name, acceptUrl }) => {
           If you weren't expecting this, you can safely ignore it.
         </p>
       </div>
-    `,
-  });
+    `);
+
+  await mailerSend.email.send(emailParams);
 };
