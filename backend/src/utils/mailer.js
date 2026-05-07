@@ -1,4 +1,4 @@
-import * as Brevo from "@getbrevo/brevo";
+import Brevo from "@getbrevo/brevo";
 import "dotenv/config";
 
 const apiInstance = new Brevo.TransactionalEmailsApi();
