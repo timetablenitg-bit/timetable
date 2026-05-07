@@ -15,7 +15,6 @@ import { useStudentStore } from "../../store/useStudentStore";
 
 import CourseSearchList from "./CourseSearchList";
 import RegistrationSummary from "./RegistrationSummary";
-i;
 
 const CourseRegistrationForm = ({
   regularCourses, // semester courses for this student's batch
