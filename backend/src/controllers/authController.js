@@ -360,7 +360,6 @@ export const inviteFaculty = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Faculty not found" });
     }
-
     if (!faculty.email) {
       return res
         .status(400)
@@ -376,7 +375,7 @@ export const inviteFaculty = async (req, res) => {
       });
     }
 
-    // 3. Generate a short-lived signed token (24 h)
+    // 3. Generate a short-lived signed token (24h)
     const inviteToken = jwt.sign(
       {
         facultyId: faculty._id,
@@ -389,7 +388,15 @@ export const inviteFaculty = async (req, res) => {
       { expiresIn: "24h" },
     );
 
-    // 4. Upsert a pending User so we can track status
+    // 4. Send email FIRST — only write to DB if this succeeds
+    const acceptUrl = `${process.env.FRONTEND_URL}/accept-invite?token=${inviteToken}`;
+    await sendInviteEmail({
+      to: faculty.email,
+      name: faculty.name,
+      acceptUrl,
+    });
+
+    // 5. Upsert the pending User only after email is confirmed sent
     await User.findOneAndUpdate(
       { email: faculty.email },
       {
@@ -398,19 +405,9 @@ export const inviteFaculty = async (req, res) => {
         faculty_code: faculty.faculty_code,
         department: faculty.department,
         invite_status: "pending",
-        // username will be set when they accept
       },
       { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
     );
-
-    // 5. Send invite email via Brevo
-    const acceptUrl = `${process.env.FRONTEND_URL}/accept-invite?token=${inviteToken}`;
-
-    await sendInviteEmail({
-      to: faculty.email,
-      name: faculty.name,
-      acceptUrl,
-    });
 
     return res
       .status(200)
