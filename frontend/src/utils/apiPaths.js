@@ -1,6 +1,6 @@
-export const BASE_URL = "http://localhost:5001";
+//export const BASE_URL = "http://localhost:5001";
 // export const BASE_URL = "https://s3pmqjjg-5001.inc1.devtunnels.ms/";
-// export const BASE_URL = "https://s3pmqjjg-5001.inc1.devtunnels.ms/";
+export const BASE_URL = "https://timetable-vvtq.onrender.com";
 
 export const API_PATHS = {
   AUTH: {
