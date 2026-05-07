@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Plus } from "lucide-react";
 import FacultyData from "./FacultyData";
-import AddFacultyModal from "../Faculty/Addfaculty/AddFacultyModal";
+import AddFacultyModal from "../Faculty/AddFaculty/AddFacultyModal";
 import useAdminStore from "../../store/useAdminStore";
 
 const FacultyDirectry = () => {
