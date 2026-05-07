@@ -3,8 +3,8 @@ import { google } from "googleapis";
 import "dotenv/config";
 
 const oauth2Client = new google.auth.OAuth2(
-  process.env.GMAIL_CLIENT_ID,
-  process.env.GMAIL_CLIENT_SECRET,
+  process.env.OAUTH_CLIENT_ID,
+  process.env.OAUTH_CLIENT_SECRET,
   "https://developers.google.com/oauthplayground",
 );
 
@@ -21,8 +21,8 @@ export const sendInviteEmail = async ({ to, name, acceptUrl }) => {
     auth: {
       type: "OAuth2",
       user: process.env.GMAIL_USER,
-      clientId: process.env.GMAIL_CLIENT_ID,
-      clientSecret: process.env.GMAIL_CLIENT_SECRET,
+      clientId: process.env.OAUTH_CLIENT_ID,
+      clientSecret: process.env.OAUTH_CLIENT_SECRET,
       refreshToken: process.env.GMAIL_REFRESH_TOKEN,
       accessToken: accessToken.token,
     },
