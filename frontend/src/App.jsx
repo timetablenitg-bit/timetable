@@ -45,11 +45,11 @@ const App = () => {
           {/* --- Public Routes --- */}
           <Route path="/" element={<Homepage />} />
           <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
+          {/* <Route path="/signup" element={<Signup />} /> */}
           {/* <Route path="/faculty" element={<Faculty />} /> */}
           {/* <Route path="/student" element={<Student />} /> */}
           {/* <Route path="/incharge" element={<Incharge />} /> */}
-          <Route path="/test" element={<TestPage />} />
+          {/* <Route path="/test" element={<TestPage />} /> */}
           <Route path="/accept-invite" element={<AcceptInvite />} />
           {/* <Route path="/generate" element={<GenerateTable />} /> */}
 
