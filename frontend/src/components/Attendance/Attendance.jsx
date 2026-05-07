@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import CustomDropdown from "../../ui/CustomDropdown";
-import { motion, AnimatePresence } from "framer-motion";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+import { AnimatePresence } from "framer-motion";
 
 import {
   ChevronLeft,
@@ -115,23 +113,23 @@ const Attendance = () => {
     // -------------------------
     const rows = [];
 
-   Object.keys(attendanceData).forEach((key) => {
-     const dateObj = new Date(key);
+    Object.keys(attendanceData).forEach((key) => {
+      const dateObj = new Date(key);
 
-     let isInRange = false;
+      let isInRange = false;
 
-     if (useRange) {
-       const from = new Date(fromDate);
-       const to = new Date(toDate);
-       isInRange = dateObj >= from && dateObj <= to;
-     } else {
-       isInRange = key.startsWith(`${year}-${month + 1}`);
-     }
+      if (useRange) {
+        const from = new Date(fromDate);
+        const to = new Date(toDate);
+        isInRange = dateObj >= from && dateObj <= to;
+      } else {
+        isInRange = key.startsWith(`${year}-${month + 1}`);
+      }
 
-     if (isInRange) {
-       rows.push([key, attendanceData[key]]);
-     }
-   });
+      if (isInRange) {
+        rows.push([key, attendanceData[key]]);
+      }
+    });
     // -------------------------
     // 📈 SUMMARY
     // -------------------------
