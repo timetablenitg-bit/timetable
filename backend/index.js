@@ -19,6 +19,7 @@ import courseRegistrationRoutes from "./src/routes/student/courseRegistrationRou
 import academicSessionRoutesStudent from "./src/routes/student/academicSessionRoutes.student.js";
 import batchRoutesStudent from "./src/routes/student/batchRoutes.student.js";
 import courseRegistrationAdminRoutes from "./src/routes/admin/courseRegistrationRoutes.Admin.js";
+import userRoutes from "./src/routes/admin/userRoutes.js";
 
 dotenv.config();
 
@@ -44,6 +45,7 @@ app.use("/api/v1/admin/timeslot", timeslotRoutes);
 app.use("/api/v1/admin/timetable/engine", timetableRoutes);
 // app.use("/api/v1/admin/constraint", constraintRoutes);
 app.use("/api/v1/admin/course-registration", courseRegistrationAdminRoutes);
+app.use("/api/v1/admin/users", userRoutes);
 
 //Faculty Routes
 

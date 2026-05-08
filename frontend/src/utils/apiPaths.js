@@ -1,4 +1,4 @@
-//export const BASE_URL = "http://localhost:5001";
+// export const BASE_URL = "http://localhost:5001";
 // export const BASE_URL = "https://s3pmqjjg-5001.inc1.devtunnels.ms/";
 export const BASE_URL = "https://timetable-vvtq.onrender.com";
 
@@ -19,6 +19,15 @@ export const API_PATHS = {
       `/api/v1/admin/course-registration/overview/${session_id}`,
     BACKLOG_STATS: (session_id) =>
       `/api/v1/admin/course-registration/backlog-stats/${session_id}`,
+  },
+
+  USER: {
+    FETCH_ALL: "api/v1/admin/users/",
+    FETCH_BY_ROLE: (role) => `api/v1/admin/users/role/${role}`,
+    UPDATE_ROLE: (id) => `api/v1/admin/users/${id}`,
+    DELETE: (id) => `api/v1/admin/users/${id}`,
+    DELETE_BY_SEMESTER: (current_sem) =>
+      `api/v1/admin/users/delete/${current_sem}`,
   },
 
   ACADEMIC_SESSION: {
@@ -104,6 +113,19 @@ export const API_PATHS = {
     SLOTS: "/api/v1/admin/timetable/engine/slots", // ← new
     SCHEDULE: "/api/v1/admin/timetable/engine/schedule", // ← new
     REWORK: "/api/v1/admin/timetable/engine/rework", // ← new
+
+    BULK_UPDATE: (session_id) =>
+      `/api/v1/admin/timetable/engine/slots/${session_id}`, // ← new
+    CREATE_SLOT: (session_id) =>
+      `/api/v1/admin/timetable/engine/slots/${session_id}`, // ← new
+    PATCH_SLOT: (session_id, slot_name) =>
+      `/api/v1/admin/timetable/engine/slots/${session_id}/${slot_name}`, // ← new
+    DELETE_SLOT: (session_id, slot_name) =>
+      `/api/v1/admin/timetable/engine/slots/${session_id}/${slot_name}`, // ← new
+    SAVE_SCHEDULE: (timetable_id) =>
+      `/api/v1/admin/timetable/engine/schedule/${timetable_id}`,
+    EVALUATE_SCHEDULE: (timetable_id) =>
+      `/api/v1/admin/timetable/engine/schedule/${timetable_id}/evaluate`,
   },
   STUDENT: {
     GETMYREGISTRATION: (session_id) =>

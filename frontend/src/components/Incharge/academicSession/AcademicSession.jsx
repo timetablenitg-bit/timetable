@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import CourseAssignmentTab from "./CourseAssignmentTab";
 import FinalizedAssignmentTab from "./FinalizedAssignmentTab";
-import GeneratedTimetableTab from "./GeneratedTimetableTab";
+import GeneratedTimetableTab from "./generatedTimetable/GeneratedTimetableTab";
 import CourseRegistrationTab from "./CourseRegsitrationTab";
 
 const TABS = [

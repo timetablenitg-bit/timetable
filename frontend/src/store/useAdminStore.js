@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import axiosInstance from "../lib/axiosInstance";
 import { API_PATHS } from "../utils/apiPaths";
+import { toast } from "react-toastify";
 
 const useAdminStore = create((set, get) => ({
   // ====================== Global State ======================
@@ -16,6 +17,13 @@ const useAdminStore = create((set, get) => ({
   rooms: [],
   timeSlots: [],
   batches: [],
+  facultyUsers: [],
+  isSavingSlots: false,
+  slotsError: null,
+
+  isSavingSchedule: false,
+  isEvaluatingSchedule: false,
+  scheduleError: null,
 
   // ====================== Timetable Engine State ======================
   isGeneratingTimetable: false,
@@ -666,6 +674,7 @@ const useAdminStore = create((set, get) => ({
       });
     }
   },
+
   fetchGeneratedSlots: async (session_id) => {
     set({ isFetchingSlots: true, error: null });
     try {
@@ -759,6 +768,250 @@ const useAdminStore = create((set, get) => ({
     } catch (err) {
       console.error("fetchBacklogStats failed:", err);
       return [];
+    }
+  },
+
+  // --- User Management ---
+
+  fetchUsers: async () => {
+    set({ loading: true, error: null });
+    try {
+      const res = await axiosInstance.get(API_PATHS.USER.FETCH_ALL);
+      set({ users: res.data.data, loading: false });
+    } catch (error) {
+      const message = error.response?.data?.message || "Failed to fetch users";
+      set({ error: message, loading: false });
+      toast.error(message);
+    }
+  },
+
+  deleteUser: async (userId) => {
+    set({ loading: true, error: null });
+    try {
+      await axiosInstance.delete(API_PATHS.USER.DELETE(userId));
+      set((state) => ({
+        users: state.users.filter((u) => u._id !== userId),
+        loading: false,
+      }));
+      toast.success("User deleted successfully");
+    } catch (error) {
+      const message = error.response?.data?.message || "Failed to delete user";
+      set({ error: message, loading: false });
+      toast.error(message);
+    }
+  },
+
+  updateUserRole: async (userId, newRole) => {
+    set({ loading: true, error: null });
+    try {
+      const res = await axiosInstance.put(API_PATHS.USER.UPDATE_ROLE(userId), {
+        role: newRole,
+      });
+      set((state) => ({
+        users: state.users.map((u) => (u._id === userId ? res.data.data : u)),
+        loading: false,
+      }));
+      toast.success("User role updated");
+    } catch (error) {
+      const message =
+        error.response?.data?.message || "Failed to update user role";
+      set({ error: message, loading: false });
+      toast.error(message);
+    }
+  },
+
+  deleteUserBySemester: async (current_sem) => {
+    set({ loading: true, error: null });
+    try {
+      const res = await axiosInstance.post(
+        API_PATHS.USER.DELETE_BY_SEMESTER(current_sem),
+      );
+      set((state) => ({
+        users: state.users.filter((u) => u.current_sem !== current_sem),
+        loading: false,
+      }));
+      toast.success(res.data.message);
+    } catch (error) {
+      const message =
+        error.response?.data?.message || "Failed to delete users by semester";
+      set({ error: message, loading: false });
+      toast.error(message);
+    }
+  },
+
+  fetchUserByRole: async (role) => {
+    set({ loading: true, error: null });
+    try {
+      const res = await axiosInstance.get(API_PATHS.USER.FETCH_BY_ROLE(role));
+
+      // Store by role so different role fetches don't clobber each other
+      if (role === "faculty") set({ facultyUsers: res.data.data });
+      else if (role === "student") set({ studentUsers: res.data.data });
+      else if (role === "admin") set({ adminUsers: res.data.data });
+
+      set({ loading: false });
+    } catch (error) {
+      const message =
+        error.response?.data?.message || "Failed to fetch users by role";
+      set({ error: message, loading: false });
+      toast.error(message);
+    }
+  },
+
+  bulkUpdateSlots: async (session_id, slots) => {
+    set({ isSavingSlots: true, slotsError: null });
+    try {
+      const response = await axiosInstance.put(
+        API_PATHS.TIMETABLE.BULK_UPDATE(session_id),
+        { slots },
+      );
+      // Refresh the slots in store with what the server returned
+      set({
+        generatedSlotsData: {
+          ...get().generatedSlotsData,
+          slots: response.data.slots,
+        },
+        isSavingSlots: false,
+      });
+      return { ok: true, warnings: response.data.warnings ?? [] };
+    } catch (error) {
+      const message = error.response?.data?.message || "Failed to save slots";
+      set({ slotsError: message, isSavingSlots: false });
+      return { ok: false, message };
+    }
+  },
+
+  createSlot: async (
+    session_id,
+    { slot_name, slot_type = "lecture", entries = [] },
+  ) => {
+    set({ isSavingSlots: true, slotsError: null });
+    try {
+      const response = await axiosInstance.post(
+        API_PATHS.TIMETABLE.CREATE_SLOT(session_id),
+        { slot_name, slot_type, entries },
+      );
+      // Append the new slot into the local store
+      const prev = get().generatedSlotsData;
+      set({
+        generatedSlotsData: prev
+          ? { ...prev, slots: [...prev.slots, response.data.slot] }
+          : prev,
+        isSavingSlots: false,
+      });
+      return { ok: true, warnings: response.data.warnings ?? [] };
+    } catch (error) {
+      const message = error.response?.data?.message || "Failed to create slot";
+      set({ slotsError: message, isSavingSlots: false });
+      return { ok: false, message };
+    }
+  },
+
+  patchSlot: async (session_id, slot_name, updates) => {
+    // updates: { entries?, slot_name?, slot_type? }
+    set({ isSavingSlots: true, slotsError: null });
+    try {
+      const response = await axiosInstance.patch(
+        API_PATHS.TIMETABLE.PATCH_SLOT(session_id, slot_name),
+        updates,
+      );
+      const updatedSlot = response.data.slot;
+      const prev = get().generatedSlotsData;
+      set({
+        generatedSlotsData: prev
+          ? {
+              ...prev,
+              slots: prev.slots.map((s) =>
+                s.slot_name === slot_name ? updatedSlot : s,
+              ),
+            }
+          : prev,
+        isSavingSlots: false,
+      });
+      return { ok: true, warnings: response.data.warnings ?? [] };
+    } catch (error) {
+      const message = error.response?.data?.message || "Failed to update slot";
+      set({ slotsError: message, isSavingSlots: false });
+      return { ok: false, message };
+    }
+  },
+
+  deleteSlot: async (session_id, slot_name) => {
+    set({ isSavingSlots: true, slotsError: null });
+    try {
+      await axiosInstance.delete(
+        API_PATHS.TIMETABLE.DELETE_SLOT(session_id, slot_name),
+      );
+      const prev = get().generatedSlotsData;
+      set({
+        generatedSlotsData: prev
+          ? {
+              ...prev,
+              slots: prev.slots.filter((s) => s.slot_name !== slot_name),
+            }
+          : prev,
+        isSavingSlots: false,
+      });
+      return { ok: true };
+    } catch (error) {
+      const message = error.response?.data?.message || "Failed to delete slot";
+      set({ slotsError: message, isSavingSlots: false });
+      return { ok: false, message };
+    }
+  },
+
+  saveSchedule: async (session_id, timetable_id, gridObj) => {
+    set({ isSavingSchedule: true, scheduleError: null });
+    try {
+      const response = await axiosInstance.put(
+        API_PATHS.TIMETABLE.SAVE_SCHEDULE(timetable_id),
+        { grid: gridObj },
+      );
+      // Update the active schedule in store
+      set((state) => ({
+        activeScheduleData: state.activeScheduleData
+          ? { ...state.activeScheduleData, grid: gridObj }
+          : state.activeScheduleData,
+        isSavingSchedule: false,
+      }));
+      return { ok: true };
+    } catch (error) {
+      const message =
+        error.response?.data?.message || "Failed to save schedule";
+      set({ scheduleError: message, isSavingSchedule: false });
+      return { ok: false, message };
+    }
+  },
+
+  saveAndEvaluateSchedule: async (
+    session_id,
+    timetable_id,
+    gridObj,
+    slotsData,
+  ) => {
+    set({ isEvaluatingSchedule: true, scheduleError: null });
+    try {
+      const response = await axiosInstance.post(
+        API_PATHS.TIMETABLE.EVALUATE_SCHEDULE(timetable_id),
+        { grid: gridObj },
+      );
+      const { score } = response.data;
+      set((state) => ({
+        activeScheduleData: state.activeScheduleData
+          ? { ...state.activeScheduleData, grid: gridObj, score }
+          : state.activeScheduleData,
+        // Also update score in generatedSlotsData if present
+        generatedSlotsData: state.generatedSlotsData
+          ? { ...state.generatedSlotsData, score }
+          : state.generatedSlotsData,
+        isEvaluatingSchedule: false,
+      }));
+      return { ok: true, score };
+    } catch (error) {
+      const message =
+        error.response?.data?.message || "Failed to evaluate schedule";
+      set({ scheduleError: message, isEvaluatingSchedule: false });
+      return { ok: false, message };
     }
   },
 }));
