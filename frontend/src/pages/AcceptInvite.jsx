@@ -6,6 +6,7 @@ import { API_PATHS } from "../utils/apiPaths";
 import { useAuthStore } from "../store/useAuthStore";
 import { toast } from "react-toastify";
 import { Loader2, ShieldCheck, AlertCircle } from "lucide-react";
+import CustomLoader from "../ui/CustomLoader";
 
 export default function AcceptInvite() {
   const [params] = useSearchParams();
@@ -79,10 +80,7 @@ export default function AcceptInvite() {
         {/* Verifying */}
         {status === "verifying" && (
           <>
-            <Loader2
-              size={40}
-              className="animate-spin text-emerald-500 mx-auto mb-4"
-            />
+            <CustomLoader variant="green" />
             <p className="text-slate-600 dark:text-slate-300 font-medium">
               Verifying your invite…
             </p>
