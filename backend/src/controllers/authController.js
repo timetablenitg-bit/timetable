@@ -36,7 +36,7 @@ export const googleLogin = async (req, res) => {
 
     const payload = await googleRes.json();
 
-    const { email, name, email_verified } = payload;
+    const { email, name, email_verified, picture } = payload;
 
     if (!email_verified) {
       return res.status(400).json({
@@ -59,6 +59,7 @@ export const googleLogin = async (req, res) => {
         user.authProvider = "google";
         user.invite_status = "accepted";
         user.isActive = true;
+        user.profilePicture = picture;
         await user.save();
       }
 
@@ -98,6 +99,7 @@ export const googleLogin = async (req, res) => {
         username: name,
         email,
         authProvider: "google",
+        profilePicture: picture,
         ...(department && { department }),
         ...(current_sem && { current_sem }),
         ...(year && { year }),

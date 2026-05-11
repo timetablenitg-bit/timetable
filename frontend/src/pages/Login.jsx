@@ -5,9 +5,7 @@ import CustomLoader from "../ui/CustomLoader";
 
 const Login = () => {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
-  const [isLoading, setIsLoading] = useSta;
-
-  te(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Mouse Movement Logic
   useEffect(() => {

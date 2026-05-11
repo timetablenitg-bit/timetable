@@ -88,6 +88,9 @@ const Profile = ({ onClose }) => {
   };
 
   const getAvatarUrl = () => {
+    if (userData?.profilePicture) {
+      return userData.profilePicture;
+    }
     const seed = userData?.username || userData?.email || "User";
     return `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(seed)}&backgroundColor=f1f5f9`;
   };
