@@ -1,5 +1,5 @@
 import React from "react";
-import RoomCard from "./RoomCard";
+import RoomCard from "../../ui/RoomCard";
 import { DoorOpen } from "lucide-react";
 import NoItemSelected from "../../ui/NoItemSelected";
 

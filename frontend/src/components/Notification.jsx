@@ -27,7 +27,7 @@ const Notification = ({ open, setOpen }) => {
 
           <button
             onClick={() => setOpen(false)}
-            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-black dark:text-white"
           >
             <X size={18} />
           </button>

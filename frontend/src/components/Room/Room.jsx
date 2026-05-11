@@ -115,7 +115,7 @@ const Room = () => {
 
         {isRoomsLoading ? (
           <div className="flex justify-center h-130 items-center text-teal-500">
-            <CustomLoader variant="green"/>
+            <CustomLoader variant="green" />
           </div>
         ) : (
           <RoomList

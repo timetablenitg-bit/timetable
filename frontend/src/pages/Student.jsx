@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import Navbaar from "../components/Navbaar";
 import TableModal from "../components/TableModal";
 import Attendance from "../components/Attendance/Attendance";
-//import BacklogCourseManagement from "../components/Student/BacklogCourseManagement";
+import { useAuthStore } from "../store/useAuthStore";
 import NoticeBoard from "../components/Student/NoticeBoard";
 
 import CourseRegistration from "../components/Student/CourseRegistration";
@@ -23,6 +23,9 @@ import axiosInstance from "../lib/axiosInstance";
 import { API_PATHS } from "../utils/apiPaths";
 
 const Student = () => {
+  const { authUser } = useAuthStore();
+  // console.log(authUser)
+
   const [openForm, setOpenForm] = useState(
     localStorage.getItem("needsProfileSetup"),
   );
@@ -60,8 +63,6 @@ const Student = () => {
     switch (activeView) {
       case "timetable":
         return <TableModal />;
-      case "attendance":
-        return <Attendance />;
       case "registration":
         return <CourseRegistration />;
       case "notices":
@@ -74,7 +75,6 @@ const Student = () => {
   // 📋 Sidebar Menu Items mapped to components
   const menuItems = [
     { key: "timetable", label: "My Timetable", icon: CalendarDays },
-    { key: "attendance", label: "Attendance", icon: ClipboardCheck },
     { key: "registration", label: "Course Registration", icon: BookPlus },
     { key: "notices", label: "Notice Board", icon: Bell },
   ];
@@ -204,8 +204,13 @@ const Student = () => {
           </div>
 
           {/* Title */}
-          <h1 className="text-2xl text-blue-600 dark:text-blue-500 font-bold px-2">
-            Student Name
+          <h1
+            className="text-lg text-blue-600 dark:text-blue-500 font-bold px-2"
+            title={authUser.username}
+          >
+            {authUser.username.length > 16
+              ? `${authUser.username.substring(0, 16)}...`
+              : authUser.username}
           </h1>
           <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-6 px-2">
             Student Portal

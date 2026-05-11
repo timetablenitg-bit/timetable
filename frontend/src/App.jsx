@@ -13,6 +13,7 @@ import Incharge from "./pages/Incharge";
 import Homepage from "./pages/HomePage";
 import TestPage from "./pages/TestPage";
 import AcceptInvite from "./pages/AcceptInvite";
+import DocumentationPage from "./pages/DocumentationPage";
 // import GenerateTable from "./pages/GenerateTable";
 const App = () => {
   // 1. Pull the theme state from Zustand
@@ -45,6 +46,7 @@ const App = () => {
           {/* --- Public Routes --- */}
           <Route path="/" element={<Homepage />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/doc" element={<DocumentationPage />} />
           {/* <Route path="/signup" element={<Signup />} /> */}
           {/* <Route path="/faculty" element={<Faculty />} /> */}
           {/* <Route path="/student" element={<Student />} /> */}

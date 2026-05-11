@@ -14,6 +14,7 @@ import {
   UserX,
 } from "lucide-react";
 import { toast } from "react-toastify";
+import CustomLoader from "../../ui/CustomLoader";
 
 // Badge component for invite status
 const InviteStatusBadge = ({ status }) => {
@@ -179,8 +180,8 @@ const FacultyData = () => {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col h-full w-full items-center justify-center text-slate-500 dark:text-slate-400">
-        <Loader2 size={48} className="animate-spin mb-4 text-emerald-500" />
+      <div className="flex flex-col h-[80vh] w-full items-center justify-center text-slate-500 dark:text-slate-400">
+        <CustomLoader variant="green" />
         <p className="text-lg font-medium animate-pulse">
           Loading faculty directory...
         </p>

@@ -22,11 +22,13 @@ import Course from "../components/Course/Course";
 import Batch from "../components/Batch/Batch";
 import Room from "../components/Room/Room";
 import AcademicSession from "../components/Incharge/academicSession/AcademicSession";
+import { useAuthStore } from "../store/useAuthStore";
 
 const Incharge = () => {
   const [openSidebar, setOpenSidebar] = useState(false);
   const [activeView, setActiveView] = useState("overview");
   const [selectedSession, setSelectedSession] = useState(null);
+  const { authUser } = useAuthStore();
 
   const renderContent = () => {
     switch (activeView) {
@@ -109,6 +111,14 @@ const Incharge = () => {
           </div>
 
           {/* Title */}
+          <h1
+            className="text-lg text-blue-600 dark:text-blue-500 font-bold px-2"
+            title={authUser.username}
+          >
+            {authUser.username.length > 16
+              ? `${authUser.username.substring(0, 16)}...`
+              : authUser.username}
+          </h1>
           <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4 px-2">
             Admin Panel
           </h2>

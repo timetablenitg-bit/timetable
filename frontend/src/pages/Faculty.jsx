@@ -6,6 +6,7 @@ import ContactAdmin from "../components/Faculty/ContactAdmin";
 import Attendance from "../components/Attendance/Attendance";
 import Leave from "../components/Faculty/Leave";
 import Workload from "../components/Faculty/Workload";
+import { useAuthStore } from "../store/useAuthStore";
 import {
   Menu,
   X,
@@ -18,6 +19,8 @@ import {
 } from "lucide-react";
 
 const Faculty = () => {
+  const { authUser } = useAuthStore();
+
   const [openSidebar, setOpenSidebar] = useState(false);
   const [activeView, setActiveView] = useState("schedule");
   const renderContent = () => {
@@ -78,13 +81,20 @@ const Faculty = () => {
           <div className="flex justify-end md:hidden mb-4">
             <X
               onClick={() => setOpenSidebar(false)}
-              className="cursor-pointer"
+              className="text-black dark:text-white cursor-pointer"
             />
           </div>
 
           {/* Title */}
-          <h1 className="text-2xl text-blue-600 font-bold px-2">Dr. Broken</h1>
-          <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4 px-2">
+          <h1
+            className="text-lg text-blue-600 dark:text-blue-500 font-bold px-2"
+            title={authUser.username}
+          >
+            {authUser.username.length > 16
+              ? `${authUser.username.substring(0, 16)}...`
+              : authUser.username}
+          </h1>
+          <h2 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-4 px-2">
             Faculty Panel
           </h2>
 

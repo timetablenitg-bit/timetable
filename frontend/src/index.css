@@ -58,7 +58,8 @@
   scrollbar-color: #475569 transparent;
 }
 /* Prevent horizontal scroll */
-html, body {
+html,
+body {
   overflow-x: hidden;
 }
 
@@ -85,20 +86,89 @@ html, body {
 }
 
 .loader-cross:before {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
   background:
-    var(--c) 0    0,
+    var(--c) 0 0,
     var(--c) 100% 0,
-    var(--c) 0    100%,
+    var(--c) 0 100%,
     var(--c) 100% 100%;
   background-size: 15.5px 15.5px;
   animation: l16-cross 1.5s infinite cubic-bezier(0.3, 1, 0, 1);
 }
 
 @keyframes l16-cross {
-  33%  { inset: -10px; transform: rotate(0deg); }
-  66%  { inset: -10px; transform: rotate(90deg); }
-  100% { inset: 0;     transform: rotate(90deg); }
+  33% {
+    inset: -10px;
+    transform: rotate(0deg);
+  }
+  66% {
+    inset: -10px;
+    transform: rotate(90deg);
+  }
+  100% {
+    inset: 0;
+    transform: rotate(90deg);
+  }
+}
+
+@keyframes blob {
+  0% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  33% {
+    transform: translate(30px, -50px) scale(1.1);
+  }
+  66% {
+    transform: translate(-20px, 20px) scale(0.9);
+  }
+  100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+}
+
+@keyframes fadeDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@layer base {
+  body {
+    @apply antialiased;
+  }
+}
+
+/* Custom Animations for the Background Blobs */
+@keyframes blob {
+  0% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  33% {
+    transform: translate(30px, -50px) scale(1.1);
+  }
+  66% {
+    transform: translate(-20px, 20px) scale(0.9);
+  }
+  100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+}
+
+.animate-blob {
+  animation: blob 7s infinite;
+}
+
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4s;
 }
