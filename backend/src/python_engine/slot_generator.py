@@ -1,32 +1,24 @@
-# python-engine/slot_generator.py
-#
-# Builds lecture slots (A-F) and minor slot (G).
-#
-# KEY FIX: Removed the sessions_per_week clash check.
-# The original code rejected entries whose SPW differed from others already
-# in the same bucket.  With 19 batches / 5 departments this instantly fills
-# every bucket for many courses, causing dozens of HARD CONFLICTs.
-#
-# The SPW constraint belongs to the *timetable arranger*, not the slot grouper.
-# Slots don't need to repeat at the same frequency to coexist in the same
-# column — the arranger simply places each slot the correct number of times.
-# The only hard constraints at slot-grouping time are:
-#   1. A faculty cannot appear twice in the same slot.
-#   2. A batch cannot appear twice in the same slot.
+"""
+slot_generator.py  –  New approach
+===================================
+Responsibilities:
+  1. Classify every assignment into theory, minor(G), OE(H), tutorial(TUT), 1-credit, lab.
+  2. Assign theory courses to slots A–F (clash-free). Overflow into H, then drop.
+  3. Build G, H, TUT, 1-credit slots from matching assignments.
+  4. Build LAB slots: three arrays – LAB_MONDAY, LAB_TUESDAY, LAB_THURSDAY.
+     Each array holds multiple lab entries (like theory slots).
+     Same batch/faculty/course cannot have two labs on the same day.
+"""
 
 import uuid
-import random
 import sys
+import random
+from collections import defaultdict, Counter
 
-SLOT_NAMES = ["A", "B", "C", "D", "E", "F"]
-MINOR_SLOT = "G"
+THEORY_SLOT_NAMES = ["A", "B", "C", "D", "E", "F"]
+LAB_DAYS = ["Monday", "Tuesday", "Thursday"]
 
-# How many extra overflow buckets to allow beyond the base 6.
-# Each backlog course can need +1 bucket; institute allows max 2 backlogs → 8.
-EXTRA_BUCKETS = 2   # gives slots A-H for overflow
-
-
-def make_entry(a):
+def _make_theory_entry(a):
     spw = int(a.get("sessions_per_week") or a.get("course_id", {}).get("credits", 1))
     return {
         "id":                str(uuid.uuid4()),
@@ -39,12 +31,24 @@ def make_entry(a):
         "sessions_per_week": spw,
     }
 
+def _make_lab_entry(a):
+    return {
+        "id":            str(uuid.uuid4()),
+        "course":        a["course_id"]["course_code"],
+        "faculty":       a["faculty_id"]["faculty_code"],
+        "faculty_id":    str(a["faculty_id"]["_id"]),
+        "batches":       [b["batch_name"] for b in a["batch_ids"]],
+        "batch_ids":     [str(b["_id"])   for b in a["batch_ids"]],
+        "assignment_id": str(a["_id"]),
+        "is_lab":        True,
+        "is_project":    a.get("component_type") in ("major_project", "project"),
+        "duration":      a.get("duration", 3),
+        "lab_group":     a.get("lab_group"),
+        "sessions_per_week": 1,
+    }
 
-def clashes(entry, bucket):
-    """
-    Returns True if placing `entry` into `bucket` would double-book a
-    faculty member or a batch.  SPW differences are NOT a clash.
-    """
+def _clashes(entry, bucket):
+    """True if faculty or any batch is already in the bucket."""
     for e in bucket:
         if e["faculty"] == entry["faculty"]:
             return True
@@ -52,79 +56,161 @@ def clashes(entry, bucket):
             return True
     return False
 
+def _classify(a):
+    component = a.get("component_type", "lecture")
+    duration  = a.get("duration", 1)
+    atype     = a.get("assignment_type", "regular")
+    credits   = int(a.get("course_id", {}).get("credits", 1))
 
-def build_lecture_slots(assignments, seed=1):
+    if component == "lab" or duration > 1:
+        return "lab"
+    if component in ("major_project", "project"):
+        return "lab"
+    if atype == "minor" or component == "minor":
+        return "minor"
+    if atype in ("oe", "open_elective") or component in ("oe", "open_elective"):
+        return "oe"
+    if atype == "tutorial" or component == "tutorial":
+        return "tutorial"
+    if credits == 1:
+        return "1credit"
+    return "theory"
+
+def build_slots(assignments, seed=1):
     rng = random.Random(seed)
 
-    regular = []
-    minor   = []
+    theory   = []
+    minor    = []
+    oe       = []
+    tutorial = []
+    one_credit = []
+    labs     = []
 
     for a in assignments:
-        component = a.get("component_type", "lecture")
-        duration  = a.get("duration", 1)
-        atype     = a.get("assignment_type", "regular")
-
-        # Labs are handled by lab_scheduler
-        if component == "lab" or duration > 1:
-            continue
-
-        entry = make_entry(a)
-
-        if atype in ("minor", "oe"):
-            minor.append(entry)
+        kind = _classify(a)
+        if kind == "lab":
+            labs.append(a)
+        elif kind == "minor":
+            minor.append(_make_theory_entry(a))
+        elif kind == "oe":
+            oe.append(_make_theory_entry(a))
+        elif kind == "tutorial":
+            tutorial.append(_make_theory_entry(a))
+        elif kind == "1credit":
+            one_credit.append(_make_theory_entry(a))
         else:
-            regular.append(entry)
+            theory.append(a)
 
-    # Shuffle for attempt diversity, hardest-to-place (most batches) first
-    rng.shuffle(regular)
-    regular.sort(key=lambda x: len(x["batches"]), reverse=True)
+    result = {}
 
-    # ── Build buckets ─────────────────────────────────────────────────────────
-    # Start with 6 (A-F); expand up to 6+EXTRA_BUCKETS if needed.
-    all_names = SLOT_NAMES + [chr(ord("A") + len(SLOT_NAMES) + i) for i in range(EXTRA_BUCKETS)]
-    buckets   = [[] for _ in all_names]
+    # ---------- 1. Theory slots A–F ----------
+    theory_entries = [_make_theory_entry(a) for a in theory]
+    rng.shuffle(theory_entries)
+    theory_entries.sort(key=lambda x: len(x["batches"]), reverse=True)
 
-    for entry in regular:
+    buckets = [[] for _ in THEORY_SLOT_NAMES]
+    overflow = []
+    for entry in theory_entries:
         placed = False
-
-        # Pass 1: try the first bucket with no clash
         for bucket in buckets:
-            if not clashes(entry, bucket):
+            if not _clashes(entry, bucket):
                 bucket.append(entry)
                 placed = True
                 break
-
         if not placed:
-            # All buckets have a real clash (faculty or batch double-book).
-            # This is a genuine data problem — report it clearly.
-            print(
-                f"[slot_generator] HARD CONFLICT: {entry['course']} "
-                f"({entry['faculty']}, {entry['batches']}) "
-                f"could not fit into any of the {len(all_names)} slots. "
-                f"Faculty or batch is assigned to too many courses.",
-                file=sys.stderr,
-            )
+            overflow.append(entry)
+            print(f"[slot_generator] OVERFLOW: {entry['course']} ...", file=sys.stderr)
 
-    # Build result — only non-empty buckets
-    result = {}
     for i, bucket in enumerate(buckets):
         if bucket:
-            result[all_names[i]] = bucket
+            result[THEORY_SLOT_NAMES[i]] = bucket
 
-    # ── Minor / OE slot G ─────────────────────────────────────────────────────
-    if minor:
-        minor_bucket = []
-        for entry in minor:
-            # Only faculty-clash check between minor courses themselves
-            if not any(e["faculty"] == entry["faculty"] for e in minor_bucket):
-                minor_bucket.append(entry)
-            else:
-                print(
-                    f"[slot_generator] Minor slot conflict: {entry['course']} "
-                    f"skipped (faculty {entry['faculty']} already in G)",
-                    file=sys.stderr,
-                )
-        if minor_bucket:
-            result[MINOR_SLOT] = minor_bucket
+    for entry in overflow:
+        if "H" not in result:
+            result["H"] = [entry]
+        else:
+            print(f"[slot_generator] DROPPED: {entry['course']}", file=sys.stderr)
+
+    # ---------- 2. Special slots ----------
+    def _build_special(entries, slot_name):
+        bucket = []
+        for entry in entries:
+            if any(e["faculty"] == entry["faculty"] for e in bucket):
+                print(f"[slot_generator] {slot_name} faculty clash: {entry['course']} skipped.", file=sys.stderr)
+                continue
+            bucket.append(entry)
+        if bucket:
+            result[slot_name] = bucket
+
+    _build_special(minor, "G")
+    if "H" not in result:
+        _build_special(oe, "H")
+    elif oe:
+        print("[slot_generator] OE dropped (H occupied)", file=sys.stderr)
+    _build_special(tutorial, "TUT")
+    _build_special(one_credit, "1-CREDIT")
+
+    # ---------- 3. Lab slots – three arrays (Monday, Tuesday, Thursday) ----------
+    # Count labs per batch to identify track‑2 batches (≥3 labs)
+    lab_count = Counter()
+    for a in labs:
+        for b in a.get("batch_ids", []):
+            lab_count[str(b["_id"])] += 1
+    track2_batches = {str(b["_id"]) for a in labs for b in a["batch_ids"] if lab_count[str(b["_id"])] >= 3}
+
+    # Priority: labs that contain track-2 batches first, then more batches
+    def priority(a):
+        batch_ids = {str(b["_id"]) for b in a["batch_ids"]}
+        return (1 if batch_ids & track2_batches else 0, -len(batch_ids))
+
+    labs_sorted = sorted(labs, key=priority, reverse=True)
+
+    # Initialize three lab slots as empty lists
+    lab_slots = {day: [] for day in LAB_DAYS}
+    # Track used batches per day
+    used_batches_per_day = {day: set() for day in LAB_DAYS}
+    # Track used faculty per day
+    used_faculty_per_day = {day: set() for day in LAB_DAYS}
+    # Track used course codes per day (prevent duplicate lab)
+    used_courses_per_day = {day: set() for day in LAB_DAYS}
+
+    for a in labs_sorted:
+        entry = _make_lab_entry(a)
+        course_code = entry["course"]
+        batch_ids = set(entry["batch_ids"])
+        faculty_id = entry["faculty_id"]
+
+        # Try to assign to a day where no conflict occurs
+        assigned_day = None
+        for day in LAB_DAYS:
+            if batch_ids & used_batches_per_day[day]:
+                continue
+            if faculty_id in used_faculty_per_day[day]:
+                continue
+            if course_code in used_courses_per_day[day]:
+                continue
+            # Optional limit (e.g., max 18 labs per day)
+            if len(lab_slots[day]) >= 18:
+                continue
+            assigned_day = day
+            break
+
+        if assigned_day:
+            lab_slots[assigned_day].append(entry)
+            used_batches_per_day[assigned_day].update(batch_ids)
+            used_faculty_per_day[assigned_day].add(faculty_id)
+            used_courses_per_day[assigned_day].add(course_code)
+        else:
+            print(f"[slot_generator] WARNING: Lab {entry['course']} could not be placed on any lab day (conflict or limit).", file=sys.stderr)
+
+    # Add the three lab arrays to result
+    for day, entries in lab_slots.items():
+        if entries:
+            result[f"LAB_{day.upper()}"] = entries   # e.g., LAB_MONDAY, LAB_TUESDAY, LAB_THURSDAY
 
     return result
+
+# Legacy wrapper
+def build_lecture_slots(assignments, seed=1):
+    slots = build_slots(assignments, seed=seed)
+    return {k: v for k, v in slots.items() if not k.startswith("LAB_")}

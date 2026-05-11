@@ -1,3 +1,4 @@
+#lab scheduler
 import uuid
 
 def build_lab_slots(assignments):

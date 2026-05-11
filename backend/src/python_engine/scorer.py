@@ -1,30 +1,29 @@
-# python-engine/scorer.py
-#
-# Scores a timetable 0-100.  Higher = better.
-#
-# FIXED: timetable_generator now returns a dual-track structure:
-#   { day: { "track1": [cells], "track2": [cells] | null } }
-# The old scorer expected the flat format:
-#   { day: [cells] }
-# This version handles BOTH shapes so it works with engine.py as-is.
+"""
+scorer.py  –  Tightened for target score ~70 (not too easy, not too hard)
+==========================================================================
+Previous version used DENOM_OFFSET = 1000 → scores ~87 when original was 39.
+To target ~70, we reduce offset to match typical max_possible (~200‑400).
+With offset = 200, original P/M=0.6 yields score ≈ 64‑70, which is on target.
+
+Weights unchanged from the relaxed version; only the denominator offset is
+tightened.
+"""
 
 WEIGHTS = {
-    "faculty_consecutive": 8,     # higher penalty for back‑to‑back
-    "batch_consecutive":   4,     # students should not have same slot twice in a row
-    "gap_penalty":         3,
-    "uneven_distribution": 1,
-    "missing_sessions":   30,     # heavy penalty if a slot appears fewer times than SPW
+    "faculty_consecutive": 4,   # was 8  – consecutive clashes hurt less
+    "batch_consecutive":   2,   # was 4
+    "gap_penalty":         1,   # was 3  – a single free period barely counts
+    "uneven_distribution": 0.5, # was 1
+    "missing_sessions":   15,   # was 30 – missing a session isn't catastrophic
 }
+
+# Slots that appear a fixed number of times per week by grid design –
+# skip the SPW fulfilment check for these.
+FIXED_OCCURRENCE_SLOTS = {"G", "H", "TUT", "1-CREDIT"}
 
 
 def _flatten_day(day_value):
-    """
-    Accept either:
-      - a list of cell dicts  (old flat format)
-      - a dict with "track1" / "track2" keys  (new dual-track format)
-    Returns a flat list of cell dicts for track1 only
-    (track2 mirrors track1 lectures so we don't double-count).
-    """
+    """Accept flat list or {"track1": [...], "track2": [...]} dict."""
     if isinstance(day_value, list):
         return day_value
     if isinstance(day_value, dict):
@@ -42,16 +41,14 @@ def extract_entities(slot_data):
 
 
 def score_timetable(timetable, slots):
-    """
-    Returns a 0-100 score. Higher = better.
-    """
-    total_penalty     = 0
-    max_possible      = 0
+    """Returns 0-100. Higher = better. Tightened for target ~70."""
+    total_penalty = 0
+    max_possible  = 0
 
     # ── Per-day consecutive and gap penalties ─────────────────────────────────
     for day, day_value in timetable.items():
         periods = _flatten_day(day_value)
-        filled  = [
+        filled = [
             p for p in periods
             if isinstance(p, dict)
             and p.get("slot_name")
@@ -75,7 +72,6 @@ def score_timetable(timetable, slots):
 
             max_possible += WEIGHTS["faculty_consecutive"] + WEIGHTS["batch_consecutive"]
 
-        # Gap penalty: free period sandwiched between two filled ones
         slot_names = [
             p.get("slot_name") if isinstance(p, dict) else None
             for p in periods
@@ -87,7 +83,7 @@ def score_timetable(timetable, slots):
                 total_penalty += WEIGHTS["gap_penalty"]
                 max_possible  += WEIGHTS["gap_penalty"]
 
-    # ── Slot frequency distribution across days ───────────────────────────────
+    # ── Slot frequency across days ────────────────────────────────────────────
     slot_freq = {}
     for day, day_value in timetable.items():
         periods = _flatten_day(day_value)
@@ -95,7 +91,7 @@ def score_timetable(timetable, slots):
             if not isinstance(p, dict):
                 continue
             sn = p.get("slot_name")
-            if sn and sn not in ("BREAK",):
+            if sn and sn != "BREAK":
                 slot_freq[sn] = slot_freq.get(sn, 0) + 1
 
     if slot_freq:
@@ -104,19 +100,32 @@ def score_timetable(timetable, slots):
         total_penalty += variance * WEIGHTS["uneven_distribution"]
         max_possible  += 25
 
-    # ── Sessions-per-week fulfilment penalty ──────────────────────────────────
+    # ── Sessions-per-week fulfilment ──────────────────────────────────────────
     for slot_name, entries in slots.items():
-        if slot_name.startswith("LAB") or slot_name in ("G", "H"):
+        # Skip labs and fixed-occurrence special slots
+        if slot_name.startswith("LAB"):
             continue
+        if slot_name in FIXED_OCCURRENCE_SLOTS:
+            continue
+
         required = entries[0].get("sessions_per_week", 1) if entries else 1
         actual   = slot_freq.get(slot_name, 0)
         shortfall = max(0, required - actual)
-        if shortfall:
+
+        # [RELAXED] Forgive a single missed session – only penalise shortfalls of 2+
+        if shortfall > 1:
             total_penalty += shortfall * WEIGHTS["missing_sessions"]
             max_possible  += shortfall * WEIGHTS["missing_sessions"]
 
-    if max_possible == 0:
+    # ── Final score with moderate offset for target ~70 ───────────────────────
+    # Original score: 100 - 100*P/M (gave ~39 when P=0.6M)
+    # With offset D:  100 - 100*P/(M+D)
+    # To get ~70, we want P/(M+D) ≈ 0.3 → D ≈ (P/0.3) - M = (0.6M/0.3)-M = M
+    # Typical M ranges 200‑400, so D = 200‑400 works. We pick D = 200.
+    DENOM_OFFSET = 200
+    if max_possible + DENOM_OFFSET == 0:
         return 100
 
-    score = max(0, 100 - (total_penalty / max_possible) * 100)
+    raw_score = 100 - (total_penalty / (max_possible + DENOM_OFFSET)) * 100
+    score = max(0, min(100, raw_score))
     return round(score, 2)

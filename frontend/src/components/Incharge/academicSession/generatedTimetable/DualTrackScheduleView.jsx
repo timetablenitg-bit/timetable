@@ -421,15 +421,16 @@ const DualTrackScheduleView = ({
             {DAYS.map((day, di) => {
               const t1Cells = grid[day]?.track1 ?? [];
               const t2Cells = grid[day]?.track2 ?? null;
-              const t1PmLab = getLabBlock(t1Cells, PM_LAB_BLOCK);
-              const t2AmLab = getLabBlock(t2Cells, AM_LAB_BLOCK);
-              const hasDualTrack = !!t2Cells && !!t2AmLab;
+
               const t1Map = Object.fromEntries(
                 t1Cells.map((c) => [c.period_index, c]),
               );
               const t2Map = t2Cells
                 ? Object.fromEntries(t2Cells.map((c) => [c.period_index, c]))
                 : {};
+              const t1PmLab = getLabBlock(t1Map, PM_LAB_BLOCK);
+              const t2AmLab = getLabBlock(t2Map, AM_LAB_BLOCK);
+              const hasDualTrack = !!t2Cells && !!t2AmLab;
 
               return (
                 <React.Fragment key={day}>

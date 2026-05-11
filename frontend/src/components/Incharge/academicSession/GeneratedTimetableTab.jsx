@@ -1,18 +1,3 @@
-// components/admin/timetable/GeneratedTimetableTab.jsx
-//
-// Dual-track timetable viewer matching the institute reference timetable:
-//
-//  TRACK LOGIC (per day, not per batch permanently):
-//  - Days with a Track-2 AM lab → show two rows for that day
-//      Track 1 row: theory AM (periods 0-3) + whatever is in PM
-//      Track 2 row: LAB spanning periods 0-2, theory PM (periods 5-7, mirrored)
-//  - All other days → single Track 1 row only
-//
-//  LAB BLOCK RULES:
-//  - Track 1 labs: PM block periods 5,6,7 (14:00–17:00)
-//  - Track 2 labs: AM block periods 0,1,2 (9:00–12:00)
-//  - Labs span 3 consecutive periods → rendered as a single merged cell
-
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import {
   Loader2,
@@ -37,7 +22,6 @@ import useAdminStore from "../../../store/useAdminStore";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
-// Period indices → display labels (matches Python TIME_LABELS)
 const TIME_LABELS = [
   "9:00–9:55",
   "10:00–10:55",
@@ -50,10 +34,10 @@ const TIME_LABELS = [
 ];
 
 const LUNCH_PI = 4;
-const BEFORE_LUNCH = [0, 1, 2, 3]; // AM theory periods
-const AFTER_LUNCH = [5, 6, 7]; // PM periods
-const AM_LAB_BLOCK = [0, 1, 2]; // Track-2 AM lab block
-const PM_LAB_BLOCK = [5, 6, 7]; // Track-1 PM lab block
+const BEFORE_LUNCH = [0, 1, 2, 3];
+const AFTER_LUNCH = [5, 6, 7];
+const AM_LAB_BLOCK = [0, 1, 2];
+const PM_LAB_BLOCK = [5, 6, 7];
 
 // ─── Colours ──────────────────────────────────────────────────────────────────
 
@@ -184,7 +168,6 @@ const SlotPill = ({ name, subLabel, isLocked, editMode, isDragOver }) => {
 };
 
 // ─── Lab merged cell ──────────────────────────────────────────────────────────
-// Renders the 3-period lab block as one tall merged cell with batch info
 
 const LabMergedCell = ({ labName, slotsData, subLabel }) => {
   const entries = useMemo(() => {
@@ -227,7 +210,6 @@ const LabMergedCell = ({ labName, slotsData, subLabel }) => {
 // ─── Helper: does this day's track have a lab block? ─────────────────────────
 
 function getLabBlock(trackRow, block) {
-  // Returns the lab slot name if all periods in `block` have the same LAB name, else null
   if (!trackRow) return null;
   const names = block.map((p) => trackRow[p]?.slot_name);
   if (names.every((n) => n && n.startsWith("LAB") && n === names[0])) {
@@ -237,11 +219,6 @@ function getLabBlock(trackRow, block) {
 }
 
 // ─── Schedule view ────────────────────────────────────────────────────────────
-//
-// Renders the institute-style dual-track timetable:
-//   • For days with a T2 AM lab:  two rows, day label spans both
-//   • For single-track days:      one row only
-//   • Lab blocks rendered as merged 3-column cells
 
 const DualTrackScheduleView = ({
   scheduleData,
@@ -272,7 +249,6 @@ const DualTrackScheduleView = ({
     [dragSrc, lockedCells, onSwapCells],
   );
 
-  // Render a single non-lab theory cell
   const renderTheoryCell = (cell, day, track) => {
     if (!cell)
       return (
@@ -377,15 +353,14 @@ const DualTrackScheduleView = ({
         >
           <colgroup>
             <col style={{ width: 88 }} />
-            {/* 8 period columns */}
-            <col style={{ width: 76 }} /> {/* 9:00 */}
-            <col style={{ width: 76 }} /> {/* 10:00 */}
-            <col style={{ width: 76 }} /> {/* 11:00 */}
-            <col style={{ width: 76 }} /> {/* 12:00 */}
-            <col style={{ width: 52 }} /> {/* LUNCH */}
-            <col style={{ width: 76 }} /> {/* 14:00 */}
-            <col style={{ width: 76 }} /> {/* 15:00 */}
-            <col style={{ width: 76 }} /> {/* 16:00 */}
+            <col style={{ width: 76 }} />
+            <col style={{ width: 76 }} />
+            <col style={{ width: 76 }} />
+            <col style={{ width: 76 }} />
+            <col style={{ width: 52 }} />
+            <col style={{ width: 76 }} />
+            <col style={{ width: 76 }} />
+            <col style={{ width: 76 }} />
           </colgroup>
           <thead>
             <tr className="bg-gray-50 dark:bg-gray-800/80">
@@ -407,12 +382,10 @@ const DualTrackScheduleView = ({
               const t1Cells = grid[day]?.track1 ?? [];
               const t2Cells = grid[day]?.track2 ?? null;
 
-              // Detect lab blocks
               const t1PmLab = getLabBlock(t1Cells, PM_LAB_BLOCK);
               const t2AmLab = getLabBlock(t2Cells, AM_LAB_BLOCK);
               const hasDualTrack = !!t2Cells && !!t2AmLab;
 
-              // Map period_index → cell for easy lookup
               const t1Map = Object.fromEntries(
                 t1Cells.map((c) => [c.period_index, c]),
               );
@@ -422,11 +395,10 @@ const DualTrackScheduleView = ({
 
               return (
                 <React.Fragment key={day}>
-                  {/* ── Track 1 row ──────────────────────────────────────── */}
+                  {/* Track 1 row */}
                   <tr
                     className={`${di > 0 ? "border-t-2 border-gray-200 dark:border-gray-700" : ""} hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors`}
                   >
-                    {/* Day label — spans both rows on dual-track days */}
                     <td
                       rowSpan={hasDualTrack ? 2 : 1}
                       className="border border-gray-100 dark:border-gray-700 px-2 py-2 text-xs font-semibold text-gray-600 dark:text-gray-300 bg-gray-50/50 dark:bg-gray-800/40 align-middle"
@@ -439,12 +411,10 @@ const DualTrackScheduleView = ({
                       )}
                     </td>
 
-                    {/* Periods 0–3 (AM theory for Track 1) */}
                     {BEFORE_LUNCH.map((pi) =>
                       renderTheoryCell(t1Map[pi], day, 1),
                     )}
 
-                    {/* LUNCH — spans both rows on dual-track days */}
                     <td
                       rowSpan={hasDualTrack ? 2 : 1}
                       className="border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-center align-middle px-0.5 py-1"
@@ -461,41 +431,33 @@ const DualTrackScheduleView = ({
                       </span>
                     </td>
 
-                    {/* PM block for Track 1 */}
                     {t1PmLab ? (
-                      // Lab spans all 3 PM periods
                       <LabMergedCell
                         labName={t1PmLab}
                         slotsData={slotsData}
                         subLabel="14:00–17:00"
                       />
                     ) : (
-                      // Individual PM theory / minor / OE cells
                       AFTER_LUNCH.map((pi) =>
                         renderTheoryCell(t1Map[pi], day, 1),
                       )
                     )}
                   </tr>
 
-                  {/* ── Track 2 row (only on days with AM lab) ───────────── */}
+                  {/* Track 2 row */}
                   {hasDualTrack && (
                     <tr
                       className="bg-purple-50/30 dark:bg-purple-900/5 hover:bg-purple-50/50 dark:hover:bg-purple-900/10 transition-colors"
                       style={{ borderTop: "1.5px dashed #c4b5fd" }}
                     >
-                      {/* AM block: LAB merged cell for T2 */}
                       <LabMergedCell
                         labName={t2AmLab}
                         slotsData={slotsData}
                         subLabel="9:00–12:00"
                       />
 
-                      {/* Period 3 (12:00–12:55) on Track 2 — theory */}
                       {renderTheoryCell(t2Map[3], day, 2)}
 
-                      {/* LUNCH handled by rowSpan above */}
-
-                      {/* PM periods on Track 2 — mirrored theory */}
                       {AFTER_LUNCH.map((pi) =>
                         renderTheoryCell(t2Map[pi], day, 2),
                       )}
@@ -535,24 +497,26 @@ const DualTrackScheduleView = ({
   );
 };
 
-// ─── Slots matrix view ────────────────────────────────────────────────────────
+// ─── Slots matrix view (UPDATED for LAB slots) ────────────────────────────────────────────────────────
 
 const SlotsView = ({ slotsData }) => {
   const { slots } = slotsData;
+
   const lectureSlots = slots.filter((s) => !s.slot_name.startsWith("LAB"));
+  const labSlots = slots.filter((s) => s.slot_name.startsWith("LAB"));
 
   const allBatches = useMemo(() => {
     const seen = new Set();
-    lectureSlots.forEach((sl) =>
+    slots.forEach((sl) =>
       sl.entries.forEach((e) =>
         (e.batch_names ?? e.batches ?? []).forEach((b) => seen.add(b)),
       ),
     );
     return [...seen].sort((a, b) => a.localeCompare(b));
-  }, [lectureSlots]);
+  }, [slots]);
 
   const getEntry = (slotName, batch) => {
-    const sl = lectureSlots.find((s) => s.slot_name === slotName);
+    const sl = slots.find((s) => s.slot_name === slotName);
     return (
       sl?.entries.find((e) =>
         (e.batch_names ?? e.batches ?? []).includes(batch),
@@ -561,93 +525,190 @@ const SlotsView = ({ slotsData }) => {
   };
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
-      <table
-        className="border-collapse"
-        style={{ minWidth: 640, width: "100%" }}
-      >
-        <thead>
-          <tr className="bg-gray-50 dark:bg-gray-800/80">
-            <th
-              className="border border-gray-100 dark:border-gray-700 px-4 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 sticky left-0 bg-gray-50 dark:bg-gray-800/80 z-10"
-              style={{ minWidth: 140 }}
-            >
-              Batch
-            </th>
-            {lectureSlots.map((sl) => (
-              <th
-                key={sl.slot_name}
-                className="border border-gray-100 dark:border-gray-700 px-3 py-2.5 text-center"
-                style={{ minWidth: 110 }}
-              >
-                <span
-                  className={`inline-flex items-center justify-center w-7 h-7 rounded-lg border text-sm font-bold ${SLOT_COLORS[sl.slot_name] ?? SLOT_COLORS.A}`}
+    <div className="space-y-8">
+      {/* Theory + Special Slots */}
+      <div>
+        <h4 className="font-semibold mb-3 flex items-center gap-2 text-sm">
+          <BookOpen size={16} /> Lecture / Theory Slots
+        </h4>
+        <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+          <table
+            className="border-collapse"
+            style={{ minWidth: 640, width: "100%" }}
+          >
+            <thead>
+              <tr className="bg-gray-50 dark:bg-gray-800/80">
+                <th
+                  className="border border-gray-100 dark:border-gray-700 px-4 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 sticky left-0 bg-gray-50 dark:bg-gray-800/80 z-10"
+                  style={{ minWidth: 140 }}
                 >
-                  {sl.slot_name}
-                </span>
-                <p className="text-[9px] text-gray-400 dark:text-gray-500 mt-1 font-normal">
-                  {sl.entries[0]?.sessions_per_week ?? 1}×/wk
-                </p>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {allBatches.map((batch, bi) => (
-            <tr
-              key={batch}
-              className={`hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors ${bi % 2 ? "bg-gray-50/30 dark:bg-gray-800/10" : ""}`}
-            >
-              <td className="border border-gray-100 dark:border-gray-700 px-4 py-2 text-xs font-semibold text-gray-600 dark:text-gray-300 sticky left-0 bg-white dark:bg-gray-800 z-10">
-                {batch}
-              </td>
-              {lectureSlots.map((sl) => {
-                const entry = getEntry(sl.slot_name, batch);
-                if (!entry)
-                  return (
-                    <td
-                      key={sl.slot_name}
-                      className="border border-gray-100 dark:border-gray-700 px-3 py-2 text-center"
-                    >
-                      <span className="text-[10px] text-gray-200 dark:text-gray-700">
-                        —
-                      </span>
-                    </td>
-                  );
-                const code = entry.course_code ?? entry.course ?? "—";
-                const fac = entry.faculty_code ?? entry.faculty ?? "";
-                const color = SLOT_COLORS[sl.slot_name] ?? SLOT_COLORS.A;
-                return (
-                  <td
+                  Batch
+                </th>
+                {lectureSlots.map((sl) => (
+                  <th
                     key={sl.slot_name}
-                    className="border border-gray-100 dark:border-gray-700 px-1.5 py-1.5"
+                    className="border border-gray-100 dark:border-gray-700 px-3 py-2.5 text-center"
+                    style={{ minWidth: 110 }}
                   >
-                    <div
-                      className={`rounded-md border px-2 py-1.5 text-center ${color}`}
+                    <span
+                      className={`inline-flex items-center justify-center w-7 h-7 rounded-lg border text-sm font-bold ${SLOT_COLORS[sl.slot_name] ?? SLOT_COLORS.A}`}
                     >
-                      <p className="text-[11px] font-bold leading-none">
-                        {code}
-                      </p>
-                      {fac && (
-                        <p className="text-[9px] mt-0.5 opacity-60 leading-none">
-                          {fac}
-                        </p>
-                      )}
-                    </div>
+                      {sl.slot_name}
+                    </span>
+                    <p className="text-[9px] text-gray-400 dark:text-gray-500 mt-1 font-normal">
+                      {sl.entries[0]?.sessions_per_week ?? 1}×/wk
+                    </p>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {allBatches.map((batch, bi) => (
+                <tr
+                  key={batch}
+                  className={`hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors ${bi % 2 ? "bg-gray-50/30 dark:bg-gray-800/10" : ""}`}
+                >
+                  <td className="border border-gray-100 dark:border-gray-700 px-4 py-2 text-xs font-semibold text-gray-600 dark:text-gray-300 sticky left-0 bg-white dark:bg-gray-800 z-10">
+                    {batch}
                   </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                  {lectureSlots.map((sl) => {
+                    const entry = getEntry(sl.slot_name, batch);
+                    if (!entry) {
+                      return (
+                        <td
+                          key={sl.slot_name}
+                          className="border border-gray-100 dark:border-gray-700 px-3 py-2 text-center"
+                        >
+                          <span className="text-[10px] text-gray-200 dark:text-gray-700">
+                            —
+                          </span>
+                        </td>
+                      );
+                    }
+                    const code = entry.course_code ?? entry.course ?? "—";
+                    const fac = entry.faculty_code ?? entry.faculty ?? "";
+                    const color = SLOT_COLORS[sl.slot_name] ?? SLOT_COLORS.A;
+                    return (
+                      <td
+                        key={sl.slot_name}
+                        className="border border-gray-100 dark:border-gray-700 px-1.5 py-1.5"
+                      >
+                        <div
+                          className={`rounded-md border px-2 py-1.5 text-center ${color}`}
+                        >
+                          <p className="text-[11px] font-bold leading-none">
+                            {code}
+                          </p>
+                          {fac && (
+                            <p className="text-[9px] mt-0.5 opacity-60 leading-none">
+                              {fac}
+                            </p>
+                          )}
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Lab Slots */}
+      {labSlots.length > 0 && (
+        <div>
+          <h4 className="font-semibold mb-3 flex items-center gap-2 text-sm">
+            <FlaskConical size={16} /> Lab Slots (Day-wise)
+          </h4>
+          <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+            <table
+              className="border-collapse"
+              style={{ minWidth: 640, width: "100%" }}
+            >
+              <thead>
+                <tr className="bg-gray-50 dark:bg-gray-800/80">
+                  <th
+                    className="border border-gray-100 dark:border-gray-700 px-4 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 sticky left-0 bg-gray-50 dark:bg-gray-800/80 z-10"
+                    style={{ minWidth: 140 }}
+                  >
+                    Batch
+                  </th>
+                  {labSlots.map((sl) => (
+                    <th
+                      key={sl.slot_name}
+                      className="border border-gray-100 dark:border-gray-700 px-3 py-2.5 text-center"
+                      style={{ minWidth: 130 }}
+                    >
+                      <span
+                        className={`inline-flex items-center justify-center w-7 h-7 rounded-lg border text-sm font-bold ${LAB_COLOR}`}
+                      >
+                        <FlaskConical size={14} />
+                      </span>
+                      <p className="text-[9px] text-purple-600 dark:text-purple-400 mt-1 font-medium">
+                        {sl.slot_name.replace("LAB_", "")}
+                      </p>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {allBatches.map((batch, bi) => (
+                  <tr
+                    key={batch}
+                    className={`hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors ${bi % 2 ? "bg-gray-50/30 dark:bg-gray-800/10" : ""}`}
+                  >
+                    <td className="border border-gray-100 dark:border-gray-700 px-4 py-2 text-xs font-semibold text-gray-600 dark:text-gray-300 sticky left-0 bg-white dark:bg-gray-800 z-10">
+                      {batch}
+                    </td>
+                    {labSlots.map((sl) => {
+                      const entry = getEntry(sl.slot_name, batch);
+                      if (!entry) {
+                        return (
+                          <td
+                            key={sl.slot_name}
+                            className="border border-gray-100 dark:border-gray-700 px-3 py-2 text-center"
+                          >
+                            <span className="text-[10px] text-gray-200 dark:text-gray-700">
+                              —
+                            </span>
+                          </td>
+                        );
+                      }
+                      const code = entry.course_code ?? entry.course ?? "—";
+                      const fac = entry.faculty_code ?? entry.faculty ?? "";
+                      return (
+                        <td
+                          key={sl.slot_name}
+                          className="border border-gray-100 dark:border-gray-700 px-1.5 py-1.5"
+                        >
+                          <div
+                            className={`rounded-md border px-2 py-1.5 text-center ${LAB_COLOR}`}
+                          >
+                            <p className="text-[11px] font-bold leading-none">
+                              {code}
+                            </p>
+                            {fac && (
+                              <p className="text-[9px] mt-0.5 opacity-60 leading-none">
+                                {fac}
+                              </p>
+                            )}
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 // ─── Institute view ───────────────────────────────────────────────────────────
-// Per-batch view for a selected day — shows each batch's actual schedule
-// (T2 batches see lab in AM + theory PM; T1 batches see theory AM + lab/theory PM)
 
 const InstituteView = ({ scheduleData, slotsData }) => {
   const [selectedDay, setSelectedDay] = useState("Monday");
@@ -686,7 +747,6 @@ const InstituteView = ({ scheduleData, slotsData }) => {
   const t2AmLab = getLabBlock(t2Cells, AM_LAB_BLOCK);
   const hasT2 = !!t2AmLab;
 
-  // For a given batch and period, get the course+faculty entry
   const getEntryForBatchPeriod = (batch, cell) => {
     if (!cell?.slot_name || cell.slot_name === "BREAK") return null;
     const entries = slotMap[cell.slot_name] ?? [];
@@ -696,7 +756,6 @@ const InstituteView = ({ scheduleData, slotsData }) => {
     );
   };
 
-  // Build the full 8-period schedule for a batch on the selected day
   const getBatchSchedule = (batch) => {
     const isT2 = track2Batches.has(batch) && hasT2;
     const map = isT2 ? t2Map : t1Map;
@@ -726,15 +785,14 @@ const InstituteView = ({ scheduleData, slotsData }) => {
               }`}
             >
               {day.slice(0, 3)}
-              {scheduleData?.grid?.[day]?.track2 ? (
+              {scheduleData?.grid?.[day]?.track2 && (
                 <span className="ml-1 text-[8px] text-purple-400">T2</span>
-              ) : null}
+              )}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Track info for selected day */}
       {hasT2 && (
         <div className="flex gap-2 text-xs">
           <span className="px-2 py-1 rounded-md bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300">
@@ -776,6 +834,12 @@ const InstituteView = ({ scheduleData, slotsData }) => {
               const schedule = getBatchSchedule(batch);
               const batchPmLab = isT2 ? null : t1PmLab;
               const batchAmLab = isT2 ? t2AmLab : null;
+              const batchPmLabEntry = t1PmLab
+                ? getEntryForBatchPeriod(batch, t1Map[PM_LAB_BLOCK[0]])
+                : null;
+              const batchAmLabEntry = t2AmLab
+                ? getEntryForBatchPeriod(batch, t2Map[AM_LAB_BLOCK[0]])
+                : null;
 
               return (
                 <tr
@@ -787,7 +851,6 @@ const InstituteView = ({ scheduleData, slotsData }) => {
                     "hover:bg-gray-50/50 dark:hover:bg-gray-800/30",
                   ].join(" ")}
                 >
-                  {/* Batch label */}
                   <td className="border border-gray-100 dark:border-gray-700 px-3 py-2 text-xs font-semibold text-gray-600 dark:text-gray-300 sticky left-0 bg-white dark:bg-gray-800 z-10">
                     <div className="flex items-center gap-1.5">
                       {batch}
@@ -799,9 +862,7 @@ const InstituteView = ({ scheduleData, slotsData }) => {
                     </div>
                   </td>
 
-                  {/* Render each period */}
                   {schedule.map(({ period_index: pi, cell }) => {
-                    // LUNCH
                     if (pi === LUNCH_PI) {
                       return (
                         <td
@@ -815,9 +876,11 @@ const InstituteView = ({ scheduleData, slotsData }) => {
                       );
                     }
 
-                    // AM lab block for T2 batches: skip periods 1 and 2 (colSpan=3 on period 0)
-                    if (isT2 && batchAmLab) {
-                      if (pi === AM_LAB_BLOCK[0]) {
+                    // T2 AM Lab
+                    if (isT2 && batchAmLab && pi === AM_LAB_BLOCK[0]) {
+                      if (batchAmLabEntry) {
+                        const code = batchAmLabEntry.course_code ?? batchAmLab;
+                        const fac = batchAmLabEntry.faculty_code ?? "";
                         return (
                           <td
                             key={pi}
@@ -828,21 +891,40 @@ const InstituteView = ({ scheduleData, slotsData }) => {
                               className={`rounded-md border px-2 py-1 text-center ${LAB_COLOR}`}
                             >
                               <p className="text-[11px] font-bold leading-none">
-                                {batchAmLab}
+                                {code}
                               </p>
-                              <p className="text-[9px] mt-0.5 opacity-60 leading-none">
-                                Lab (AM)
+                              {fac && (
+                                <p className="text-[9px] mt-0.5 opacity-60 leading-none">
+                                  {fac}
+                                </p>
+                              )}
+                              <p className="text-[9px] mt-0.5 opacity-40 leading-none">
+                                {batchAmLab} (AM)
                               </p>
                             </div>
                           </td>
                         );
+                      } else {
+                        return (
+                          <td
+                            key={pi}
+                            colSpan={3}
+                            className="border border-gray-100 dark:border-gray-700 px-1 py-1 text-center"
+                          >
+                            <span className="text-[10px] text-gray-200 dark:text-gray-700">
+                              —
+                            </span>
+                          </td>
+                        );
                       }
-                      if (AM_LAB_BLOCK.slice(1).includes(pi)) return null;
                     }
+                    if (isT2 && AM_LAB_BLOCK.slice(1).includes(pi)) return null;
 
-                    // PM lab block for T1 batches: skip periods 6 and 7 (colSpan=3 on period 5)
-                    if (!isT2 && batchPmLab) {
-                      if (pi === PM_LAB_BLOCK[0]) {
+                    // T1 PM Lab
+                    if (!isT2 && batchPmLab && pi === PM_LAB_BLOCK[0]) {
+                      if (batchPmLabEntry) {
+                        const code = batchPmLabEntry.course_code ?? batchPmLab;
+                        const fac = batchPmLabEntry.faculty_code ?? "";
                         return (
                           <td
                             key={pi}
@@ -853,26 +935,41 @@ const InstituteView = ({ scheduleData, slotsData }) => {
                               className={`rounded-md border px-2 py-1 text-center ${LAB_COLOR}`}
                             >
                               <p className="text-[11px] font-bold leading-none">
-                                {batchPmLab}
+                                {code}
                               </p>
-                              <p className="text-[9px] mt-0.5 opacity-60 leading-none">
-                                Lab (PM)
+                              {fac && (
+                                <p className="text-[9px] mt-0.5 opacity-60 leading-none">
+                                  {fac}
+                                </p>
+                              )}
+                              <p className="text-[9px] mt-0.5 opacity-40 leading-none">
+                                {batchPmLab} (PM)
                               </p>
                             </div>
                           </td>
                         );
+                      } else {
+                        return (
+                          <td
+                            key={pi}
+                            colSpan={3}
+                            className="border border-gray-100 dark:border-gray-700 px-1 py-1 text-center"
+                          >
+                            <span className="text-[10px] text-gray-200 dark:text-gray-700">
+                              —
+                            </span>
+                          </td>
+                        );
                       }
-                      if (PM_LAB_BLOCK.slice(1).includes(pi)) return null;
                     }
+                    if (!isT2 && PM_LAB_BLOCK.slice(1).includes(pi))
+                      return null;
 
                     // Regular theory cell
                     const entry = getEntryForBatchPeriod(batch, cell);
                     const name = cell?.slot_name;
 
-                    if (
-                      !entry &&
-                      (!name || name === "BREAK" || name === null)
-                    ) {
+                    if (!entry) {
                       return (
                         <td
                           key={pi}
@@ -886,8 +983,8 @@ const InstituteView = ({ scheduleData, slotsData }) => {
                     }
 
                     const code =
-                      entry?.course_code ?? entry?.course ?? name ?? "—";
-                    const fac = entry?.faculty_code ?? entry?.faculty ?? "";
+                      entry.course_code ?? entry.course ?? name ?? "—";
+                    const fac = entry.faculty_code ?? entry.faculty ?? "";
                     const color = slotColor(name);
 
                     return (
@@ -904,11 +1001,6 @@ const InstituteView = ({ scheduleData, slotsData }) => {
                           {fac && (
                             <p className="text-[9px] mt-0.5 opacity-60 leading-none">
                               {fac}
-                            </p>
-                          )}
-                          {name && !entry && (
-                            <p className="text-[8px] mt-0.5 opacity-40 font-mono">
-                              {name}
                             </p>
                           )}
                         </div>
@@ -1142,7 +1234,6 @@ const GeneratedTimetableTab = ({ session }) => {
         </div>
       </div>
 
-      {/* Edit toolbar */}
       {editMode && (
         <EditToolbar
           lockedCount={lockedCells.size}

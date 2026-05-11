@@ -1,10 +1,10 @@
-# python-engine/main.py
+"""
+main.py
+"""
 import sys
 import json
-from engine import run
-from scorer import score_timetable
-from rework_engine import rework
-
+from engine  import run
+from scorer  import score_timetable
 
 def main():
     try:
@@ -20,13 +20,17 @@ def main():
                 print(json.dumps({"score": score, "violations": []}))
                 return
 
+            # "rework" mode is deprecated with fixed structure –
+            # re-run full generation instead.
             if mode == "rework":
-                timetable     = data["timetable"]
-                slots         = data["slots"]
-                locked_cells  = data.get("locked_cells", [])
-                best_tt, score = rework(timetable, slots, locked_cells)
-                print(json.dumps({"timetable": best_tt, "score": score}))
-                return
+                print(
+                    json.dumps({
+                        "error": "rework mode is not supported with the fixed-structure engine. "
+                                 "Submit assignments list for a fresh generation."
+                    }),
+                    file=sys.stderr,
+                )
+                sys.exit(1)
 
         # Default: full generation from assignments list
         result = run(data)
