@@ -49,6 +49,10 @@ const DocumentationPage = () => {
         <div className="w-full mx-auto px-4 h-full flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
+
+
+
+
               onClick={() => navigate(-1)}
               className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors cursor-pointer"
             >
