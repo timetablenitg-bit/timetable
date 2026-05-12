@@ -7,6 +7,7 @@ import {
   CalendarDays,
   Pencil,
   RefreshCw,
+  FileSpreadsheet,
 } from "lucide-react";
 import useAdminStore from "../../../../store/useAdminStore";
 import ScoreBadge from "./ScoreBadge";
@@ -14,6 +15,7 @@ import EditToolbar from "./EditToolbar";
 import DualTrackScheduleView from "./DualTrackScheduleView";
 import EditableSlotsView from "./EditableSlotsView";
 import InstituteView from "./InstituteView";
+import { API_PATHS } from "../../../../utils/apiPaths";
 
 const GeneratedTimetableTab = ({ session }) => {
   const {
@@ -29,6 +31,7 @@ const GeneratedTimetableTab = ({ session }) => {
     isSavingSchedule,
     isEvaluatingSchedule,
     scheduleError,
+    exportTimetableExcel,
   } = useAdminStore();
 
   const [activeTab, setActiveTab] = useState("schedule");
@@ -215,6 +218,11 @@ const GeneratedTimetableTab = ({ session }) => {
       </div>
     );
 
+  const handleExportExcel = async () => {
+    if (!activeScheduleData?.generation_id) return;
+    await exportTimetableExcel(activeScheduleData.generation_id, session?.term);
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -248,6 +256,16 @@ const GeneratedTimetableTab = ({ session }) => {
               {activeTab === "slots" ? "Edit slots" : "Edit"}
             </button>
           )}
+
+          <button
+            onClick={handleExportExcel}
+            disabled={!activeScheduleData?.generation_id}
+            title="Export to Excel"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-700 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <FileSpreadsheet size={12} />
+            Export
+          </button>
 
           <button
             onClick={() => {

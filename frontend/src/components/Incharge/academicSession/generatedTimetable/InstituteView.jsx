@@ -46,7 +46,7 @@ const FilterSelect = ({ label, value, onChange, options, colorClass }) => {
           onChange={(e) => onChange(e.target.value)}
           className={`text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 focus:outline-none focus:ring-2 ${ringColors[colorClass]} cursor-pointer`}
         >
-          <option value="">All {label}s</option>
+          <option value="">All {label}</option>
           {options.map((o) => (
             <option key={o} value={o}>
               {o}

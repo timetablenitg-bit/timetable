@@ -1,6 +1,6 @@
-// export const BASE_URL = "http://localhost:5001";
+export const BASE_URL = "http://localhost:5001";
 // export const BASE_URL = "https://s3pmqjjg-5001.inc1.devtunnels.ms/";
-export const BASE_URL = "https://timetable-vvtq.onrender.com";
+// export const BASE_URL = "https://timetable-vvtq.onrender.com";
 
 export const API_PATHS = {
   AUTH: {
@@ -135,5 +135,8 @@ export const API_PATHS = {
     SUBMIT_REGISTRATION: "/api/v1/student/course-registration/submit",
     ACADEMICSESSIONS: "/api/v1/student/academicSessions",
     MY_BATCH: "/api/v1/student/my-batch",
+  },
+  EXPORT: {
+    EXCEL: (generation_id) => `/api/v1/export/excel/${generation_id}`,
   },
 };

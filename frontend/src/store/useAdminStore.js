@@ -1014,6 +1014,25 @@ const useAdminStore = create((set, get) => ({
       return { ok: false, message };
     }
   },
+  exportTimetableExcel: async (generation_id, sessionTerm) => {
+    try {
+      const response = await axiosInstance.get(
+        API_PATHS.EXPORT.EXCEL(generation_id),
+        { responseType: "blob" },
+      );
+      const url = URL.createObjectURL(response.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `timetable_${sessionTerm ?? generation_id}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      return { ok: true };
+    } catch (error) {
+      const message =
+        error.response?.data?.message || "Failed to export timetable";
+      return { ok: false, message };
+    }
+  },
 }));
 
 export default useAdminStore;
