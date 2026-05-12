@@ -22,7 +22,7 @@ import courseRegistrationAdminRoutes from "./src/routes/admin/courseRegistration
 import userRoutes from "./src/routes/admin/userRoutes.js";
 import exportRoutes from "./src/routes/exportRoutes.js";
 
-import timetablePublicRoutes from "./src/routes/timetablePublicRoutes.js"; // ← new
+import timetablePublicRoutes from "./src/routes/Timetablepublicroutes.js"; // ← new
 
 dotenv.config();
 
