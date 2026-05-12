@@ -22,6 +22,8 @@ import courseRegistrationAdminRoutes from "./src/routes/admin/courseRegistration
 import userRoutes from "./src/routes/admin/userRoutes.js";
 import exportRoutes from "./src/routes/exportRoutes.js";
 
+import timetablePublicRoutes from "./src/routes/timetablePublicRoutes.js"; // ← new
+
 dotenv.config();
 
 const app = express();
@@ -55,6 +57,8 @@ app.use("/api/v1/export", exportRoutes);
 app.use("/api/v1/student/course-registration", courseRegistrationRoutes);
 app.use("/api/v1/student/academicSessions", academicSessionRoutesStudent);
 app.use("/api/v1/student/my-batch", batchRoutesStudent);
+
+app.use("/api/v1/timetable", timetablePublicRoutes); // for public timetable endpoints (active session, schedule, slots)
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

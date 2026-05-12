@@ -1,6 +1,6 @@
-export const BASE_URL = "http://localhost:5001";
+// export const BASE_URL = "http://localhost:5001";
 // export const BASE_URL = "https://s3pmqjjg-5001.inc1.devtunnels.ms/";
-// export const BASE_URL = "https://timetable-vvtq.onrender.com";
+export const BASE_URL = "https://timetable-vvtq.onrender.com";
 
 export const API_PATHS = {
   AUTH: {
@@ -138,5 +138,10 @@ export const API_PATHS = {
   },
   EXPORT: {
     EXCEL: (generation_id) => `/api/v1/export/excel/${generation_id}`,
+  },
+  TIMETABLE_PUBLIC: {
+    ACTIVE_SESSION: "/api/v1/timetable/active-session",
+    SCHEDULE: "/api/v1/timetable/schedule",
+    SLOTS: "/api/v1/timetable/slots",
   },
 };
