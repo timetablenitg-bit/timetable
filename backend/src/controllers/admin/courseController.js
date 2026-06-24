@@ -19,6 +19,7 @@ export const fetchCourses = async (req, res) => {
       course_type: course.course_type,
       department: course.department,
       nature: course.nature,
+      is_elective_slot: course.is_elective_slot ?? false,
 
       // LTP (flattened)
       lecture: course.hours?.lecture ?? 0,

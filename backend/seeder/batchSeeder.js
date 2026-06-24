@@ -1,9 +1,9 @@
 import mongoose from "mongoose";
-import { Batch } from "../src/models/batchModel.js"; // adjust path as needed
+import { Batch } from "../src/models/batchModel.js";
 import dotenv from "dotenv";
 dotenv.config();
 
-const MONGO_URI = process.env.MONGO_URI; // adjust DB name
+const MONGO_URI = process.env.MONGO_URI;
 
 const batches = [
   // ── Common (Year 1) ──────────────────────────────────────────────────────
@@ -11,24 +11,18 @@ const batches = [
   { department: "common", year: 1, semester: 1, batch_name: "1st Sem Sec B" },
   { department: "common", year: 1, semester: 1, batch_name: "1st Sem Sec C" },
   { department: "common", year: 1, semester: 1, batch_name: "1st Sem Sec D" },
-  { department: "common", year: 1, semester: 2, batch_name: "1st Sem Sec A" },
-  { department: "common", year: 1, semester: 2, batch_name: "1st Sem Sec B" },
-  { department: "common", year: 1, semester: 2, batch_name: "1st Sem Sec C" },
-  { department: "common", year: 1, semester: 2, batch_name: "1st Sem Sec D" },
+  { department: "common", year: 1, semester: 2, batch_name: "2nd Sem Sec A" },
+  { department: "common", year: 1, semester: 2, batch_name: "2nd Sem Sec B" },
+  { department: "common", year: 1, semester: 2, batch_name: "2nd Sem Sec C" },
+  { department: "common", year: 1, semester: 2, batch_name: "2nd Sem Sec D" },
 
   // ── CSE ──────────────────────────────────────────────────────────────────
   { department: "CSE", year: 2, semester: 3, batch_name: "CSE 3rd Sem" },
   { department: "CSE", year: 2, semester: 4, batch_name: "CSE 4th Sem" },
   { department: "CSE", year: 3, semester: 5, batch_name: "CSE 5th Sem" },
-  { department: "CSE", year: 3, semester: 5, batch_name: "CSE 5th Sem Minor" },
   { department: "CSE", year: 3, semester: 6, batch_name: "CSE 6th Sem" },
-  { department: "CSE", year: 3, semester: 6, batch_name: "CSE 6th Sem Minor" },
   { department: "CSE", year: 4, semester: 7, batch_name: "CSE 7th Sem" },
-  { department: "CSE", year: 4, semester: 7, batch_name: "CSE 7th Sem Minor" },
   { department: "CSE", year: 4, semester: 8, batch_name: "CSE 8th Sem" },
-  { department: "CSE", year: 4, semester: 8, batch_name: "CSE 8th Sem Minor" },
-  { department: "CSE", year: 5, semester: 1, batch_name: "CSE MTech 1st Sem" },
-  { department: "CSE", year: 5, semester: 2, batch_name: "CSE MTech 2nd Sem" },
 
   // ── CVE ──────────────────────────────────────────────────────────────────
   { department: "CVE", year: 2, semester: 3, batch_name: "CVE 3rd Sem" },
@@ -42,15 +36,9 @@ const batches = [
   { department: "ECE", year: 2, semester: 3, batch_name: "ECE 3rd Sem" },
   { department: "ECE", year: 2, semester: 4, batch_name: "ECE 4th Sem" },
   { department: "ECE", year: 3, semester: 5, batch_name: "ECE 5th Sem" },
-  { department: "ECE", year: 3, semester: 5, batch_name: "ECE 5th Sem Minor" },
   { department: "ECE", year: 3, semester: 6, batch_name: "ECE 6th Sem" },
-  { department: "ECE", year: 3, semester: 6, batch_name: "ECE 6th Sem Minor" },
   { department: "ECE", year: 4, semester: 7, batch_name: "ECE 7th Sem" },
-  { department: "ECE", year: 4, semester: 7, batch_name: "ECE 7th Sem Minor" },
   { department: "ECE", year: 4, semester: 8, batch_name: "ECE 8th Sem" },
-  { department: "ECE", year: 4, semester: 8, batch_name: "ECE 8th Sem Minor" },
-  { department: "ECE", year: 5, semester: 1, batch_name: "ECE MTech 1st Sem" },
-  { department: "ECE", year: 5, semester: 2, batch_name: "ECE MTech 2nd Sem" },
 
   // ── EEE ──────────────────────────────────────────────────────────────────
   { department: "EEE", year: 2, semester: 3, batch_name: "EEE 3rd Sem" },
@@ -59,8 +47,6 @@ const batches = [
   { department: "EEE", year: 3, semester: 6, batch_name: "EEE 6th Sem" },
   { department: "EEE", year: 4, semester: 7, batch_name: "EEE 7th Sem" },
   { department: "EEE", year: 4, semester: 8, batch_name: "EEE 8th Sem" },
-  { department: "EEE", year: 5, semester: 1, batch_name: "EEE MTech 1st Sem" },
-  { department: "EEE", year: 5, semester: 2, batch_name: "EEE MTech 2nd Sem" },
 
   // ── MCE ──────────────────────────────────────────────────────────────────
   { department: "MCE", year: 2, semester: 3, batch_name: "MCE 3rd Sem" },
@@ -76,7 +62,6 @@ async function seedBatches() {
     await mongoose.connect(MONGO_URI);
     console.log("✅ Connected to MongoDB");
 
-    // Optional: clear existing batches before seeding
     await Batch.deleteMany({});
     console.log("🗑️  Cleared existing batches");
 

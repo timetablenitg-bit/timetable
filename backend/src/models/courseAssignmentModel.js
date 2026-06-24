@@ -1,33 +1,3 @@
-// import mongoose from "mongoose";
-
-// const courseAssignmentSchema = new mongoose.Schema(
-//   {
-//     session_id: {
-//       type: mongoose.Schema.Types.ObjectId,
-//       ref: "AcademicSession",
-//     },
-
-//     course_id: { type: mongoose.Schema.Types.ObjectId, ref: "Course" },
-
-//     faculty_id: { type: mongoose.Schema.Types.ObjectId, ref: "Faculty" },
-
-//     batch_id: { type: mongoose.Schema.Types.ObjectId, ref: "Batch" },
-
-//     backlog_batch_id: [
-//       {
-//         type: mongoose.Schema.Types.ObjectId,
-//         ref: "Batch",
-//       },
-//     ],
-//   },
-//   { timestamps: true },
-// );
-
-// export const CourseAssignment = mongoose.model(
-//   "CourseAssignment",
-//   courseAssignmentSchema,
-// );
-
 import mongoose from "mongoose";
 
 const courseAssignmentSchema = new mongoose.Schema(
@@ -42,6 +12,12 @@ const courseAssignmentSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Course",
       required: true,
+    },
+
+    elective_slot_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Course",
+      default: null,
     },
 
     faculty_id: {

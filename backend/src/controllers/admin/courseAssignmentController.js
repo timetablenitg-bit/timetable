@@ -19,6 +19,7 @@ export const fetchCourseAssignments = async (req, res) => {
       .populate("course_id", "course_code course_name credits")
       .populate("faculty_id", "name email faculty_code")
       .populate("batch_ids", "batch_name")
+      .populate("elective_slot_id", "course_code course_name")
       .sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -224,15 +225,14 @@ export const bulkUpsertCourseAssignments = async (req, res) => {
         duration,
         component_type,
         is_combined,
+        elective_slot_id,
       } = item;
 
       if (
         !session_id ||
-        !course_id ||
+        !(course_id || elective_slot_id) ||
         !faculty_id ||
-        !batch_ids?.length ||
-        sessions_per_week === undefined ||
-        sessions_per_week === null
+        !batch_ids?.length
       ) {
         throw new Error("Missing required fields in one of the assignments");
       }
@@ -256,10 +256,11 @@ export const bulkUpsertCourseAssignments = async (req, res) => {
               faculty_id,
               batch_ids,
               assignment_type,
-              sessions_per_week,
+              ...(sessions_per_week != null ? { sessions_per_week } : {}),
               duration,
               component_type,
               is_combined,
+              elective_slot_id: elective_slot_id ?? null,
             },
           },
           upsert: true,

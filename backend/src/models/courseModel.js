@@ -26,7 +26,7 @@ const courseSchema = new mongoose.Schema(
       enum: ["CORE", "MINOR", "ELECTIVE", "PROJECT", "SEMINAR"],
       required: true,
     },
-
+    is_elective_slot: { type: Boolean, default: false },
     hours: {
       lecture: { type: Number, default: 0 },
       tutorial: { type: Number, default: 0 },

@@ -483,6 +483,7 @@ const useAdminStore = create((set, get) => ({
       return false;
     }
   },
+
   // -----BATCHES--------
   fetchBatches: async () => {
     // set({ isLoading: true, error: null });
@@ -624,10 +625,6 @@ const useAdminStore = create((set, get) => ({
 
   // ====================== New Timetable Engine Actions ======================
 
-  /**
-   * Generate full timetable for a given academic session.
-   * @param {string} session_id - ID of the academic session
-   */
   generateTimetable: async (session_id) => {
     set({ isGeneratingTimetable: true, error: null, timetableData: null });
 
@@ -651,10 +648,6 @@ const useAdminStore = create((set, get) => ({
     }
   },
 
-  /**
-   * Evaluate an existing timetable (e.g., after drag‑drop changes).
-   * @param {Array} timetable - The timetable array to evaluate
-   */
   evaluateTimetable: async (timetable) => {
     set({ isEvaluatingTimetable: true, error: null, evaluationScore: null });
 
@@ -735,9 +728,6 @@ const useAdminStore = create((set, get) => ({
     }
   },
 
-  /**
-   * Clear all timetable‑related data from the store.
-   */
   clearTimetableData: () => {
     set({
       timetableData: null,
@@ -746,7 +736,7 @@ const useAdminStore = create((set, get) => ({
       isEvaluatingTimetable: false,
     });
   },
-  // in your admin store
+
   fetchRegistrationOverview: async (sessionId) => {
     try {
       const { data } = await axiosInstance.get(

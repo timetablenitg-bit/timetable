@@ -11,7 +11,6 @@ import Student from "./pages/Student";
 import Faculty from "./pages/Faculty";
 import Incharge from "./pages/Incharge";
 import Homepage from "./pages/HomePage";
-import TestPage from "./pages/TestPage";
 import AcceptInvite from "./pages/AcceptInvite";
 import DocumentationPage from "./pages/DocumentationPage";
 // import GenerateTable from "./pages/GenerateTable";

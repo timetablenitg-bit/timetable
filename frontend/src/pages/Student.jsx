@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import Navbaar from "../components/Navbaar";
 import TableModal from "../components/TableModal";
-import Attendance from "../components/Attendance/Attendance";
 import { useAuthStore } from "../store/useAuthStore";
 import NoticeBoard from "../components/Student/NoticeBoard";
 

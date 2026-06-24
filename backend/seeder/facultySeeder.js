@@ -1,9 +1,9 @@
 import mongoose from "mongoose";
-import { Faculty } from "../src/models/facultyModel.js"; // adjust path as needed
+import { Faculty } from "../src/models/facultyModel.js";
 import dotenv from "dotenv";
 dotenv.config();
 
-const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/your_db"; // adjust DB name
+const MONGO_URI = process.env.MONGO_URI;
 
 const faculties = [
   // ── APS ──────────────────────────────────────────────────────────────────
@@ -23,6 +23,7 @@ const faculties = [
     department: "APS",
   },
   { faculty_code: "LP-APS", name: "Dr. Lasitha P", department: "APS" },
+  { faculty_code: "NVK-APS", name: "Dr. Najiya V.K.", department: "APS" },
 
   // ── CSE ──────────────────────────────────────────────────────────────────
   {
@@ -48,16 +49,21 @@ const faculties = [
   { faculty_code: "KC-CSE", name: "Dr. Kashinath C", department: "CSE" },
   { faculty_code: "PS-CSE", name: "Dr. Pravati Swain", department: "CSE" },
   { faculty_code: "VT-CSE", name: "Dr. Veena T", department: "CSE" },
+  { faculty_code: "MP-CSE", name: "Dr. Meenakshi Panda", department: "CSE" },
+  { faculty_code: "CF2-CSE", name: "Contract Faculty 2", department: "CSE" },
+  { faculty_code: "CF4-CSE", name: "Contract Faculty 4", department: "CSE" },
 
   // ── CVE ──────────────────────────────────────────────────────────────────
-  { faculty_code: "BM-CVE", name: "Dr. Bapi Mondal", department: "CSE" },
-  { faculty_code: "GP-CVE", name: "Dr. Gaurav Patel", department: "CSE" },
-  { faculty_code: "KS-CVE", name: "Dr. Kandalai Srikanth", department: "CSE" },
-  { faculty_code: "DS-CVE", name: "Dr. Duduku Saidulu", department: "CSE" },
-  { faculty_code: "SRM-CVE", name: "Dr. Sathishraj Mani", department: "CSE" },
-  { faculty_code: "RNB-CVE", name: "Dr. R N Bhowmik", department: "CSE" },
-  { faculty_code: "VM-CVE", name: "Dr. Vinamra Mishra", department: "CSE" },
-  { faculty_code: "HKM-CVE", name: "Dr. Harikumar M", department: "CSE" },
+  { faculty_code: "BM-CVE", name: "Dr. Bapi Mondal", department: "CVE" },
+  { faculty_code: "GP-CVE", name: "Dr. Gaurav Patel", department: "CVE" },
+  { faculty_code: "KS-CVE", name: "Dr. Kandalai Srikanth", department: "CVE" },
+  { faculty_code: "DS-CVE", name: "Dr. Duduku Saidulu", department: "CVE" },
+  { faculty_code: "SRM-CVE", name: "Dr. Sathishraj Mani", department: "CVE" },
+  { faculty_code: "RNB-CVE", name: "Dr. R N Bhowmik", department: "CVE" },
+  { faculty_code: "VM-CVE", name: "Dr. Vinamra Mishra", department: "CVE" },
+  { faculty_code: "HKM-CVE", name: "Dr. Harikumar M", department: "CVE" },
+  { faculty_code: "RDS-CVE", name: "Dr. Rishi Dipak S", department: "CVE" },
+  { faculty_code: "SS-CVE", name: "Dr. S Sethulakshmi", department: "CVE" },
 
   // ── ECE ──────────────────────────────────────────────────────────────────
   { faculty_code: "LG-ECE", name: "Dr. Lalat Indu Giri", department: "ECE" },
@@ -69,6 +75,7 @@ const faculties = [
   },
   { faculty_code: "TVK-ECE", name: "Dr. T. Veerakumar", department: "ECE" },
   { faculty_code: "NKYB-ECE", name: "Dr. Nithin Kumar YB", department: "ECE" },
+  { faculty_code: "PP-ECE", name: "Dr. Pragati Patel", department: "ECE" },
   {
     faculty_code: "SP-ECE",
     name: "Dr. Shivnarayan Patidar",
@@ -86,6 +93,7 @@ const faculties = [
 
   // ── EEE ──────────────────────────────────────────────────────────────────
   { faculty_code: "SRR-EEE", name: "Dr. Sreeraj", department: "EEE" },
+  { faculty_code: "CV-EEE", name: "Dr. C Vyjayanthi", department: "EEE" },
   { faculty_code: "ADR-EEE", name: "Dr. Amol D Rahulkar", department: "EEE" },
   { faculty_code: "GG-EEE", name: "Mr. Goutam Goswami", department: "EEE" },
   { faculty_code: "AMS-EEE", name: "Dr. Amritansh Sagar", department: "EEE" },
@@ -143,7 +151,18 @@ const faculties = [
   { faculty_code: "SK-HSS", name: "Dr. Sunil Kumar", department: "HSS" },
   { faculty_code: "GS-HSS", name: "Dr. Gopika Sankar U", department: "HSS" },
   { faculty_code: "UKT-HSS", name: "Dr. Unais KT", department: "HSS" },
-  { faculty_code: "SKG-HSS", name: "Dr. S. Kumaraguru", department: "HSS" },
+  { faculty_code: "SKG-HSS", name: "Mr. Sudharsan", department: "HSS" },
+  {
+    faculty_code: "SKS-HSS",
+    name: "Dr. Sanjeev Kumar Singh",
+    department: "HSS",
+  },
+  { faculty_code: "RK-HSS", name: "Dr. Rinu Koshy", department: "HSS" },
+  {
+    faculty_code: "SS-HSS",
+    name: "Mrs. Sanghmitra Samanta",
+    department: "HSS",
+  },
 ];
 
 async function seedFaculties() {
@@ -151,7 +170,6 @@ async function seedFaculties() {
     await mongoose.connect(MONGO_URI);
     console.log("✅ Connected to MongoDB");
 
-    // Optional: clear existing faculties before seeding
     await Faculty.deleteMany({});
     console.log("🗑️  Cleared existing faculties");
 

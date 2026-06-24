@@ -1,5 +1,4 @@
 // export const BASE_URL = "http://localhost:5001";
-// export const BASE_URL = "https://s3pmqjjg-5001.inc1.devtunnels.ms/";
 export const BASE_URL = "https://timetable-vvtq.onrender.com";
 
 export const API_PATHS = {
@@ -81,31 +80,12 @@ export const API_PATHS = {
     LEAVES: "/api/v1/faculty/leave",
     WORKLOAD: "/api/v1/faculty/workload",
   },
-  LAB_ASSIGNMENT: {
-    GET: "/api/v1/admin/labAssignment/",
-    CREATE: "/api/v1/admin/labAssignment/",
-    UPDATE: (id) => `/api/v1/admin/labAssignment/${id}`,
-    DELETE: (id) => `/api/v1/admin/labAssignment/${id}`,
-  },
   ROOM: {
     GET: "/api/v1/admin/room/",
     CREATE: "/api/v1/admin/room/",
     BULK: "/api/v1/admin/room/bulk",
     UPDATE: (id) => `/api/v1/admin/room/${id}`,
     DELETE: (id) => `/api/v1/admin/room/${id}`,
-  },
-  TIMESLOT: {
-    GET: "/api/v1/admin/timeslot/",
-    CREATE: "/api/v1/admin/timeslot/",
-    BULK: "/api/v1/admin/timeslot/bulk",
-    UPDATE: (id) => `/api/v1/admin/timeslot/${id}`,
-    DELETE: (id) => `/api/v1/admin/timeslot/${id}`,
-  },
-  CONSTRAINT: {
-    GET: "/api/v1/admin/constraint/",
-    CREATE: "/api/v1/admin/constraint/",
-    UPDATE: (id) => `/api/v1/admin/constraint/${id}`,
-    DELETE: (id) => `/api/v1/admin/constraint/${id}`,
   },
   TIMETABLE: {
     GENERATE: "/api/v1/admin/timetable/engine/generate",

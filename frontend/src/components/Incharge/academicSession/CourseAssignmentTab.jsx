@@ -11,6 +11,7 @@ import {
   BookOpen,
   FileText,
   Link,
+  Sparkles,
 } from "lucide-react";
 import useAdminStore from "../../../store/useAdminStore";
 
@@ -40,6 +41,180 @@ const ASSIGNMENT_TYPE_COLORS = {
   minor:
     "bg-blue-100   dark:bg-blue-900/30   text-blue-700   dark:text-blue-400",
   oe: "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400",
+};
+
+// ─── Elective Picker ───────────────────────────────────────────────────────────
+// Shown in the course cell when row.course.is_elective_slot === true.
+// Lets admin pick which actual elective course fills that slot.
+const ElectivePicker = ({
+  allCourses = [],
+  batchDepartment,
+  value, // currently selected actual elective course object (or null)
+  onChange, // (course | null) => void
+  slotName, // e.g. "Elective III"
+}) => {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  const wrapperRef = useRef(null);
+
+  // Sync display text when value changes externally
+  useEffect(() => {
+    setQuery(value ? `${value.course_code} – ${value.course_name}` : "");
+  }, [value]);
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target))
+        setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // Only actual elective courses (not slots themselves)
+  const electivePool = allCourses.filter(
+    (c) => c.nature === "ELECTIVE" && !c.is_elective_slot,
+  );
+
+  // DEPT pool = same department; ALL pool = everything
+  const pool = showAll
+    ? electivePool
+    : electivePool.filter((c) => c.department === batchDepartment);
+
+  const filtered = pool
+    .filter(
+      (c) =>
+        c.course_name.toLowerCase().includes(query.toLowerCase()) ||
+        c.course_code.toLowerCase().includes(query.toLowerCase()),
+    )
+    .slice(0, 10);
+
+  return (
+    <div ref={wrapperRef} className="relative w-full">
+      {/* Slot label badge */}
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <Sparkles size={11} className="text-violet-400" />
+        <span className="text-[10px] font-semibold text-violet-500 dark:text-violet-400 uppercase tracking-wide">
+          {slotName}
+        </span>
+      </div>
+
+      {/* Search input */}
+      <div
+        className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all w-full
+          ${
+            open
+              ? "border-violet-400 ring-2 ring-violet-100 dark:ring-violet-900/30"
+              : "border-violet-200 dark:border-violet-800/50 hover:border-violet-300"
+          } bg-violet-50/40 dark:bg-violet-900/10`}
+      >
+        <Search size={13} className="text-violet-400 flex-none" />
+        <input
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setOpen(true);
+            if (!e.target.value) onChange(null);
+          }}
+          onFocus={() => setOpen(true)}
+          placeholder="Pick an elective…"
+          className="bg-transparent outline-none flex-1 text-gray-700 dark:text-gray-200 placeholder-violet-300 dark:placeholder-violet-600 text-sm min-w-0"
+        />
+
+        {/* DEPT / ALL toggle */}
+        <button
+          type="button"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            setShowAll((p) => !p);
+            setOpen(true);
+          }}
+          title={showAll ? "Showing all departments" : "Showing dept. only"}
+          className={`flex-none text-[10px] font-bold px-1.5 py-0.5 rounded transition-colors ${
+            showAll
+              ? "bg-violet-200 dark:bg-violet-800/50 text-violet-700 dark:text-violet-300"
+              : "bg-gray-100 dark:bg-gray-700 text-gray-400 hover:text-gray-600"
+          }`}
+        >
+          {showAll ? "ALL" : "DEPT"}
+        </button>
+
+        {value && (
+          <X
+            size={13}
+            className="text-violet-400 hover:text-violet-600 cursor-pointer flex-none"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              onChange(null);
+              setQuery("");
+              setOpen(false);
+            }}
+          />
+        )}
+      </div>
+
+      {/* Dropdown */}
+      {open && (
+        <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border border-violet-200 dark:border-violet-800/50 rounded-xl shadow-xl max-h-64 overflow-y-auto">
+          {electivePool.length === 0 ? (
+            <div className="px-4 py-4 text-xs text-gray-400 italic text-center">
+              No elective courses found.
+              <br />
+              <span className="text-violet-400">
+                Add elective courses first from the Courses tab.
+              </span>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="px-4 py-3 text-xs text-gray-400 italic">
+              No matches
+              {!showAll && (
+                <button
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setShowAll(true);
+                  }}
+                  className="ml-1 text-violet-500 underline"
+                >
+                  search all departments?
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* Section header */}
+              <div className="px-3 py-1.5 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider border-b border-gray-100 dark:border-gray-700">
+                {showAll ? "All departments" : `${batchDepartment} electives`} ·{" "}
+                {filtered.length} found
+              </div>
+              {filtered.map((c) => (
+                <button
+                  key={c._id}
+                  type="button"
+                  onClick={() => {
+                    onChange(c);
+                    setQuery(`${c.course_code} – ${c.course_name}`);
+                    setOpen(false);
+                  }}
+                  className="w-full text-left px-4 py-3 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-colors border-b border-gray-100 dark:border-gray-700 last:border-0"
+                >
+                  <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                    {c.course_name}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    {c.course_code} · {c.department} · {c.credits ?? "–"} cr ·{" "}
+                    {c.lecture ?? 0}-{c.tutorial ?? 0}-{c.practical ?? 0}
+                  </p>
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
 };
 
 // ─── Course Search ─────────────────────────────────────────────────────────────
@@ -100,7 +275,6 @@ const CourseSearch = ({
           placeholder={placeholder}
           className="bg-transparent outline-none flex-1 text-gray-700 dark:text-gray-200 placeholder-gray-400 min-w-0"
         />
-        {/* Dept / All toggle */}
         {allCourses.length > 0 && (
           <button
             type="button"
@@ -169,8 +343,11 @@ const CourseSearch = ({
                   {c.course_name}
                 </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                  {c.course_code} · {c.course_type} · {c.credits} cr · Sem{" "}
-                  {c.semester_offered} · {c.department}
+                  {c.course_code} · {c.course_type} · {c.credits} cr ·{" "}
+                  {c.semester_offered
+                    ? `Sem ${c.semester_offered}`
+                    : "Elective"}{" "}
+                  · {c.department}
                 </p>
               </button>
             ))
@@ -239,7 +416,6 @@ const FacultySearch = ({
           placeholder={placeholder}
           className="bg-transparent outline-none flex-1 text-gray-700 dark:text-gray-200 placeholder-gray-400 min-w-0"
         />
-        {/* Global toggle */}
         {allFaculties.length > 0 && (
           <button
             type="button"
@@ -374,7 +550,6 @@ const CourseAssignmentTab = ({ session, onSave }) => {
           fetchRegistrationOverview(session?._id),
         ]);
         setBacklogStats(stats ?? []);
-        // Build batchId → courseId → studentCount
         const countMap = {};
         for (const { batch, students } of overview ?? []) {
           countMap[batch._id] = {};
@@ -417,9 +592,12 @@ const CourseAssignmentTab = ({ session, onSave }) => {
   );
 
   // ── Default row factory ─────────────────────────────────────────────────────
+  // elective_course: the actual elective picked for an elective slot row.
+  // elective_slot_id: stored so the backend knows which slot was filled.
   const makeRow = (overrides = {}) => ({
     rowId: crypto.randomUUID(),
-    course: null,
+    course: null, // for slot rows: the slot Course doc
+    elective_course: null, // for slot rows: the actual chosen elective
     faculty: null,
     assignment_type: "regular",
     component_type: "lecture",
@@ -447,13 +625,23 @@ const CourseAssignmentTab = ({ session, onSave }) => {
       );
 
       if (existing?.length) {
-        newRows[batch._id] = existing.map((a) =>
-          makeRow({
-            course: courses.find(
-              (c) =>
-                c._id?.toString() ===
-                (a.course_id?._id ?? a.course_id)?.toString(),
-            ),
+        newRows[batch._id] = existing.map((a) => {
+          // For assignments that have an elective_slot_id, the course_id is the
+          // actual elective. We need to restore slot + actual elective separately.
+          const slotId = a.elective_slot_id?._id ?? a.elective_slot_id;
+          const slotCourse = slotId
+            ? courses.find((c) => c._id?.toString() === slotId?.toString())
+            : null;
+
+          const actualCourseId = a.course_id?._id ?? a.course_id;
+          const actualCourse = courses.find(
+            (c) => c._id?.toString() === actualCourseId?.toString(),
+          );
+
+          return makeRow({
+            // If it was a slot assignment, row.course = slot, row.elective_course = actual
+            course: slotCourse ?? actualCourse,
+            elective_course: slotCourse ? actualCourse : null,
             faculty: faculties.find(
               (f) =>
                 f._id?.toString() ===
@@ -468,8 +656,8 @@ const CourseAssignmentTab = ({ session, onSave }) => {
               .map((id) => (id?._id ?? id)?.toString())
               .filter((id) => id !== batch._id?.toString()),
             assignmentId: a._id,
-          }),
-        );
+          });
+        });
       } else {
         const batchCourses = courses.filter((c) => {
           if (batch.semester === 1 || batch.semester === 2) {
@@ -496,18 +684,16 @@ const CourseAssignmentTab = ({ session, onSave }) => {
           }),
         );
       }
+
       const existingCourseIds = new Set(
         (newRows[batch._id] ?? []).map((r) => r.course?._id?.toString()),
       );
 
-      // Only show backlog courses that at least one student from THIS batch registered
       const batchCourseIds = overviewData[batch._id] ?? {};
       const backlogRows = backlogStats
         .filter((s) => {
           const id = s.course._id?.toString();
-          return (
-            id && !existingCourseIds.has(id) && batchCourseIds[id] > 0 // ← must have at least 1 student from this batch
-          );
+          return id && !existingCourseIds.has(id) && batchCourseIds[id] > 0;
         })
         .map((s) =>
           makeRow({
@@ -566,58 +752,49 @@ const CourseAssignmentTab = ({ session, onSave }) => {
   };
 
   // ── Build API payload ───────────────────────────────────────────────────────
+  // For elective slot rows: course_id = actual elective, elective_slot_id = slot._id
+  // For normal rows: course_id = course._id, elective_slot_id = null
   const buildPayload = (batchId) =>
     (rows[batchId] ?? [])
-      .filter((r) => r.course && r.faculty)
-      .map((r) => ({
-        ...(r.assignmentId ? { _id: r.assignmentId } : {}),
-        session_id: session._id,
-        batch_ids: [batchId, ...r.extra_batch_ids].filter(Boolean),
-        course_id: r.course._id,
-        faculty_id: r.faculty._id,
-        assignment_type: r.assignment_type,
-        component_type: r.component_type,
-        duration: r.duration,
-        is_combined: r.is_combined,
-        ...(r.sessions_per_week != null
-          ? { sessions_per_week: r.sessions_per_week }
-          : {}),
-      }));
+      .filter((r) => {
+        // For slot rows, both slot and actual elective must be picked
+        if (r.course?.is_elective_slot) return r.elective_course && r.faculty;
+        return r.course && r.faculty;
+      })
+      .map((r) => {
+        const isSlot = r.course?.is_elective_slot;
+        return {
+          ...(r.assignmentId ? { _id: r.assignmentId } : {}),
+          session_id: session._id,
+          batch_ids: [batchId, ...r.extra_batch_ids].filter(Boolean),
+          course_id: isSlot ? r.elective_course._id : r.course._id,
+          elective_slot_id: isSlot ? r.course._id : null,
+          faculty_id: r.faculty._id,
+          assignment_type: r.assignment_type,
+          component_type: r.component_type,
+          duration: r.duration,
+          is_combined: r.is_combined,
+          ...(r.sessions_per_week != null
+            ? { sessions_per_week: r.sessions_per_week }
+            : {}),
+        };
+      });
+
+  // ── Validation: slot rows need an elective picked ───────────────────────────
+  const getIncompleteRows = (batchId) =>
+    (rows[batchId] ?? []).filter((r) => {
+      if (r.course?.is_elective_slot) return !r.elective_course || !r.faculty;
+      return !r.course || !r.faculty;
+    });
 
   // ── Save one batch ──────────────────────────────────────────────────────────
-  // const saveBatchAssignments = async (batchId) => {
-  //   const incomplete = (rows[batchId] ?? []).filter(
-  //     (r) => !r.course || !r.faculty,
-  //   );
-  //   if (incomplete.length) {
-  //     setError("Fill in all course and faculty fields before saving.");
-  //     setTimeout(() => setError(null), 3000);
-  //     return;
-  //   }
-  //   const payload = buildPayload(batchId);
-  //   if (!payload.length) {
-  //     setError("Nothing to save — assign at least one course.");
-  //     setTimeout(() => setError(null), 3000);
-  //     return;
-  //   }
-  //   setSavingBatch(batchId);
-  //   try {
-  //     await bulkUpsertCourseAssignments(session._id, payload);
-  //     await fetchCourseAssignments({ session_id: session._id });
-  //   } catch {
-  //     setError("Failed to save batch assignments.");
-  //   } finally {
-  //     setSavingBatch(null);
-  //   }
-  // };
   const saveBatchAssignments = async (batchId) => {
-    const incomplete = (rows[batchId] ?? []).filter(
-      (r) => !r.course || !r.faculty,
-    );
+    const incomplete = getIncompleteRows(batchId);
     if (incomplete.length) {
       setBatchErrors((p) => ({
         ...p,
-        [batchId]: "Fill in all course and faculty fields before saving.",
+        [batchId]:
+          "Fill in all course and faculty fields before saving. Elective slots need an elective selected.",
       }));
       return;
     }
@@ -633,7 +810,7 @@ const CourseAssignmentTab = ({ session, onSave }) => {
     setSavingBatch(batchId);
     try {
       await bulkUpsertCourseAssignments(session._id, payload);
-      await fetchCourseAssignments({ session_id: session._id }); // only runs on success
+      await fetchCourseAssignments({ session_id: session._id });
     } catch (e) {
       setBatchErrors((p) => ({
         ...p,
@@ -662,6 +839,84 @@ const CourseAssignmentTab = ({ session, onSave }) => {
     } finally {
       setIsSavingAll(false);
     }
+  };
+
+  // ── Course cell renderer — the key logic ────────────────────────────────────
+  // Returns the JSX for the course cell based on row type:
+  //   1. isManual → CourseSearch (existing behaviour)
+  //   2. is_elective_slot → static slot name label + ElectivePicker below
+  //   3. normal course → static display (existing behaviour)
+  const renderCourseCell = (row, batch, batchCounts) => {
+    if (row.isManual) {
+      const deptCourses = courses.filter(
+        (c) => c.department === batch.department,
+      );
+      return (
+        <CourseSearch
+          courses={deptCourses}
+          allCourses={courses}
+          value={row.course}
+          onChange={(c) =>
+            updateRow(batch._id, row.rowId, {
+              course: c ?? null,
+              component_type: c?.course_type === "LAB" ? "lab" : "lecture",
+              duration: c?.course_type === "LAB" ? 3 : 1,
+            })
+          }
+        />
+      );
+    }
+
+    if (row.course?.is_elective_slot) {
+      return (
+        <div className="space-y-1">
+          <ElectivePicker
+            allCourses={courses}
+            batchDepartment={batch.department}
+            value={row.elective_course}
+            slotName={row.course.course_name} // e.g. "Elective III"
+            onChange={(c) =>
+              updateRow(batch._id, row.rowId, {
+                elective_course: c ?? null,
+                // inherit component type from actual course if available
+                component_type: c?.course_type === "LAB" ? "lab" : "lecture",
+                duration: c?.course_type === "LAB" ? 3 : 1,
+              })
+            }
+          />
+          {/* Show selected elective metadata beneath picker */}
+          {row.elective_course && (
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 pl-1">
+              {row.elective_course.credits ?? "–"} cr ·{" "}
+              {row.elective_course.lecture ?? 0}-
+              {row.elective_course.tutorial ?? 0}-
+              {row.elective_course.practical ?? 0} ·{" "}
+              {row.elective_course.department}
+            </p>
+          )}
+        </div>
+      );
+    }
+
+    // Normal static course display
+    return (
+      <div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="font-medium text-gray-800 dark:text-gray-100 text-sm">
+            {row.course?.course_name}
+          </p>
+          {row.course?._id && batchCounts[row.course._id.toString()] > 0 && (
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400">
+              {batchCounts[row.course._id.toString()]}
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+          {row.course?.course_code} · {row.course?.course_type} ·{" "}
+          {row.course?.credits} cr
+        </p>
+      </div>
+    );
   };
 
   // ── Loading ─────────────────────────────────────────────────────────────────
@@ -721,15 +976,17 @@ const CourseAssignmentTab = ({ session, onSave }) => {
             const batchCounts = overviewData[batch._id] ?? {};
             const batchRows = rows[batch._id] ?? [];
             const isExpanded = expandedBatches[batch._id];
-            const assignedCount = batchRows.filter((r) => r.faculty).length;
+
+            // Progress: slot rows count as assigned only if elective_course is also picked
+            const assignedCount = batchRows.filter((r) =>
+              r.course?.is_elective_slot
+                ? r.elective_course && r.faculty
+                : r.faculty,
+            ).length;
             const progress = batchRows.length
               ? (assignedCount / batchRows.length) * 100
               : 0;
             const isSaving = savingBatch === batch._id;
-
-            const deptCourses = courses.filter(
-              (c) => c.department === batch.department,
-            );
             const otherBatches = filteredBatches.filter(
               (b) => b._id !== batch._id,
             );
@@ -821,9 +1078,11 @@ const CourseAssignmentTab = ({ session, onSave }) => {
                             <React.Fragment key={row.rowId}>
                               <tr
                                 className={`transition-colors ${
-                                  row.assignment_type === "backlog"
-                                    ? "bg-amber-50/60 dark:bg-amber-900/10 hover:bg-amber-50 dark:hover:bg-amber-900/20"
-                                    : "hover:bg-gray-50 dark:hover:bg-gray-700/30"
+                                  row.course?.is_elective_slot
+                                    ? "bg-violet-50/40 dark:bg-violet-900/10 hover:bg-violet-50 dark:hover:bg-violet-900/20"
+                                    : row.assignment_type === "backlog"
+                                      ? "bg-amber-50/60 dark:bg-amber-900/10 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                                      : "hover:bg-gray-50 dark:hover:bg-gray-700/30"
                                 }`}
                               >
                                 <td className="px-4 py-3 text-xs text-gray-400">
@@ -832,49 +1091,7 @@ const CourseAssignmentTab = ({ session, onSave }) => {
 
                                 {/* Course cell */}
                                 <td className="px-4 py-3">
-                                  {row.isManual ? (
-                                    <CourseSearch
-                                      courses={deptCourses}
-                                      allCourses={courses}
-                                      value={row.course}
-                                      onChange={(c) =>
-                                        updateRow(batch._id, row.rowId, {
-                                          course: c ?? null,
-                                          component_type:
-                                            c?.course_type === "LAB"
-                                              ? "lab"
-                                              : "lecture",
-                                          duration:
-                                            c?.course_type === "LAB" ? 3 : 1,
-                                        })
-                                      }
-                                    />
-                                  ) : (
-                                    <div>
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <p className="font-medium text-gray-800 dark:text-gray-100 text-sm">
-                                          {row.course?.course_name}
-                                        </p>
-                                        {row.course?._id &&
-                                          batchCounts[
-                                            row.course._id.toString()
-                                          ] > 0 && (
-                                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400">
-                                              {
-                                                batchCounts[
-                                                  row.course._id.toString()
-                                                ]
-                                              }{" "}
-                                            </span>
-                                          )}
-                                      </div>
-                                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                                        {row.course?.course_code} ·{" "}
-                                        {row.course?.course_type} ·{" "}
-                                        {row.course?.credits} cr
-                                      </p>
-                                    </div>
-                                  )}
+                                  {renderCourseCell(row, batch, batchCounts)}
                                 </td>
 
                                 {/* Faculty */}
@@ -882,8 +1099,13 @@ const CourseAssignmentTab = ({ session, onSave }) => {
                                   <FacultySearch
                                     faculties={(() => {
                                       const depts = new Set();
-                                      if (row.course?.department)
-                                        depts.add(row.course.department);
+                                      // For slot rows, use the actual elective's dept if picked
+                                      const effectiveCourse = row.course
+                                        ?.is_elective_slot
+                                        ? row.elective_course
+                                        : row.course;
+                                      if (effectiveCourse?.department)
+                                        depts.add(effectiveCourse.department);
                                       if (
                                         batch.semester !== 1 &&
                                         batch.semester !== 2 &&
@@ -1058,9 +1280,11 @@ const CourseAssignmentTab = ({ session, onSave }) => {
                         <div
                           key={row.rowId}
                           className={`rounded-lg border p-4 ${
-                            row.assignment_type === "backlog"
-                              ? "bg-amber-50/60 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/50"
-                              : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                            row.course?.is_elective_slot
+                              ? "bg-violet-50/40 dark:bg-violet-900/10 border-violet-200 dark:border-violet-800/50"
+                              : row.assignment_type === "backlog"
+                                ? "bg-amber-50/60 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/50"
+                                : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
                           }`}
                         >
                           {/* Card header */}
@@ -1069,6 +1293,11 @@ const CourseAssignmentTab = ({ session, onSave }) => {
                               <span className="text-sm font-medium text-gray-500">
                                 #{idx + 1}
                               </span>
+                              {row.course?.is_elective_slot && (
+                                <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 flex items-center gap-1">
+                                  <Sparkles size={9} /> Elective Slot
+                                </span>
+                              )}
                               <span
                                 className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${
                                   ASSIGNMENT_TYPE_COLORS[row.assignment_type]
@@ -1099,44 +1328,7 @@ const CourseAssignmentTab = ({ session, onSave }) => {
                             <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block">
                               Course
                             </label>
-                            {row.isManual ? (
-                              <CourseSearch
-                                courses={deptCourses}
-                                allCourses={courses}
-                                value={row.course}
-                                onChange={(c) =>
-                                  updateRow(batch._id, row.rowId, {
-                                    course: c ?? null,
-                                    component_type:
-                                      c?.course_type === "LAB"
-                                        ? "lab"
-                                        : "lecture",
-                                    duration: c?.course_type === "LAB" ? 3 : 1,
-                                  })
-                                }
-                              />
-                            ) : (
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <p className="font-medium text-gray-800 dark:text-gray-100 text-sm">
-                                    {row.course?.course_name}
-                                  </p>
-                                  {row.course?._id &&
-                                    batchCounts[row.course._id.toString()] >
-                                      0 && (
-                                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400">
-                                        {batchCounts[row.course._id.toString()]}{" "}
-                                        students
-                                      </span>
-                                    )}
-                                </div>
-                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                                  {row.course?.course_code} ·{" "}
-                                  {row.course?.course_type} ·{" "}
-                                  {row.course?.credits} cr
-                                </p>
-                              </div>
-                            )}
+                            {renderCourseCell(row, batch, batchCounts)}
                           </div>
 
                           {/* Faculty */}
@@ -1147,8 +1339,12 @@ const CourseAssignmentTab = ({ session, onSave }) => {
                             <FacultySearch
                               faculties={(() => {
                                 const depts = new Set();
-                                if (row.course?.department)
-                                  depts.add(row.course.department);
+                                const effectiveCourse = row.course
+                                  ?.is_elective_slot
+                                  ? row.elective_course
+                                  : row.course;
+                                if (effectiveCourse?.department)
+                                  depts.add(effectiveCourse.department);
                                 if (
                                   batch.semester !== 1 &&
                                   batch.semester !== 2 &&

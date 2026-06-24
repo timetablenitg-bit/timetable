@@ -3,7 +3,6 @@ import Navbaar from "../components/Navbaar";
 import TableModal from "../components/TableModal";
 import FacultyTimeTableModal from "../components/Faculty/FacultyTimeTableModal";
 import ContactAdmin from "../components/Faculty/ContactAdmin";
-import Attendance from "../components/Attendance/Attendance";
 import Leave from "../components/Faculty/Leave";
 import Workload from "../components/Faculty/Workload";
 import { useAuthStore } from "../store/useAuthStore";
