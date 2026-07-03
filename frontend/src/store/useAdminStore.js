@@ -464,6 +464,18 @@ const useAdminStore = create((set, get) => ({
     }
   },
 
+  // 🔥 NEW: convenience helper for the "shared lab room" UI — just a thin
+  // wrapper over updateCourseAssignment, kept separate for readability
+  // since the row component doesn't need to know it's the same call.
+  updateSharedLabWith: async (id, course_ids) => {
+    return get().updateCourseAssignment(id, { shared_lab_with: course_ids });
+  },
+
+  // 🔥 NEW: convenience helper for the "sync slot" UI
+  updateSyncedWith: async (id, assignment_ids) => {
+    return get().updateCourseAssignment(id, { synced_with: assignment_ids });
+  },
+
   deleteCourseAssignment: async (id) => {
     try {
       await axiosInstance.delete(API_PATHS.COURSE_ASSIGNMENT.DELETE(id));

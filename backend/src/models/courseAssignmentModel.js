@@ -60,11 +60,26 @@ const courseAssignmentSchema = new mongoose.Schema(
       default: "lecture",
     },
 
-    // explicitly mark combined classes
-    is_combined: {
-      type: Boolean,
-      default: false,
-    },
+    // 🔥 NEW: other courses (lab component) that share the SAME physical lab room
+    // as this assignment's course. Engine should never place these on the same
+    // day, or the same track-slot, for the given session.
+    // Only meaningful when component_type === "lab".
+    shared_lab_with: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Course",
+      },
+    ],
+
+    // 🔥 NEW: other CourseAssignment docs that must be scheduled in the
+    // exact same slot as this one (admin-forced sync, independent of batches).
+    // Symmetric — if A.synced_with includes B, B.synced_with should include A.
+    synced_with: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "CourseAssignment",
+      },
+    ],
   },
   { timestamps: true },
 );
