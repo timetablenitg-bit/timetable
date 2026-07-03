@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import useAdminStore from "../../../../../store/useAdminStore";
 import { EVEN_SEMS, ODD_SEMS, DURATION_MAP } from "../constants";
-import { buildRowPayload } from "../rowHelpers";
+import { buildRowPayload } from "../RowHelpers";
 
 // Default row factory.
 // elective_course: the actual elective picked for an elective slot row.

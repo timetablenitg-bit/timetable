@@ -3,7 +3,7 @@ import { Trash2, Sparkles } from "lucide-react";
 import CourseCell from "./CourseCell";
 import FacultySearch from "./FacultySearch";
 import CompactSelect from "./CompactSelect";
-import { getFacultyPoolForRow } from "./rowHelpers";
+import { getFacultyPoolForRow } from "./RowHelpers";
 import {
   ASSIGNMENT_TYPE_OPTIONS,
   COMPONENT_TYPE_OPTIONS,

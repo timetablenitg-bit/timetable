@@ -9,7 +9,7 @@ import {
   getFacultyPoolForRow,
   getLabCoursePoolForRow,
   getSyncCandidatesForRow,
-} from "./rowHelpers";
+} from "./RowHelpers";
 import { ASSIGNMENT_TYPE_OPTIONS, COMPONENT_TYPE_OPTIONS } from "./constants";
 
 // One <tr> inside the desktop table.

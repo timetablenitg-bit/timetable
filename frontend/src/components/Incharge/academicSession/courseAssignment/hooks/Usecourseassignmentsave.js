@@ -1,6 +1,6 @@
 import { useState } from "react";
 import useAdminStore from "../../../../../store/useAdminStore";
-import { buildRowPayload } from "../rowHelpers";
+import { buildRowPayload } from "../RowHelpers";
 
 // Owns: building the API payload from row state, validating rows before
 // save, and the actual save calls (single batch + save-all).
