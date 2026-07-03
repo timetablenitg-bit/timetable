@@ -8,7 +8,7 @@ import {
   Layers,
   X,
 } from "lucide-react";
-import CourseAssignmentTab from "./courseAssignment/Courseassignmenttab";
+import CourseAssignmentTab from "./courseAssignment/CourseAssignmentTab";
 import FinalizedAssignmentTab from "./FinalizedAssignmentTab";
 import GeneratedTimetableTab from "./generatedTimetable/GeneratedTimetableTab";
 import CourseRegistrationTab from "./CourseRegsitrationTab";
