@@ -6,20 +6,15 @@ export const getRegistrationOverview = async (req, res) => {
   try {
     const { sessionId } = req.params;
 
-    // 1. All registrations for this session
     const registrations = await CourseRegistration.find({ session: sessionId })
-      .populate("regularCourses.course")
       .populate("backlogCourses.course")
       .lean();
 
-    // 2. Get all unique batches involved in this session's registrations
     const batchIds = [...new Set(registrations.map((r) => r.batch.toString()))];
     const batches = await Batch.find({ _id: { $in: batchIds } }).lean();
 
-    // 3. studentId → registration lookup
     const regMap = new Map(registrations.map((r) => [r.student.toString(), r]));
 
-    // 4. For each batch, find students by matching department + current_sem
     const result = await Promise.all(
       batches.map(async (batch) => {
         const students = await User.find({
@@ -63,12 +58,10 @@ export const getRegistrationOverview = async (req, res) => {
 export const getBacklogCourseStats = async (req, res) => {
   try {
     const { sessionId } = req.params;
-    // console.log("Fetching backlog stats for session:", sessionId);
     const registrations = await CourseRegistration.find({ session: sessionId })
       .populate("backlogCourses.course")
       .lean();
 
-    // Count students per backlog course
     const countMap = new Map();
     for (const reg of registrations) {
       for (const entry of reg.backlogCourses) {
@@ -84,7 +77,7 @@ export const getBacklogCourseStats = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: [...countMap.values()], // [{ course: {...}, count: 5 }]
+      data: [...countMap.values()],
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

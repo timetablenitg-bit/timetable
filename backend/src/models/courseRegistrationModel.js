@@ -20,16 +20,6 @@ const courseRegistrationSchema = new mongoose.Schema(
       required: true,
     },
 
-    regularCourses: [
-      {
-        course: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "Course",
-        },
-        courseCode: String, // optional but useful snapshot
-      },
-    ],
-
     backlogCourses: [
       {
         course: {
@@ -42,7 +32,7 @@ const courseRegistrationSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["NOT_STARTED", "IN_PROGRESS", "COMPLETED"],
+      enum: ["NOT_STARTED", "COMPLETED"],
       default: "NOT_STARTED",
     },
 

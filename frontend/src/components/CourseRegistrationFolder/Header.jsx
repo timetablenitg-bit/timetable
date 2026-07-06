@@ -4,13 +4,7 @@ import { useAuthStore } from "../../store/useAuthStore";
 
 const Header = () => {
   const { authUser } = useAuthStore();
-
-  // Function to truncate username
-  const truncateUsername = (username, maxLength = 12) => {
-    if (!username) return "Student";
-    if (username.length <= maxLength) return username;
-    return `${username.substring(0, maxLength)}...`;
-  };
+  const rollNumber = authUser.email?.split("@")[0]?.toUpperCase();
 
   return (
     <header className="flex flex-row justify-between items-center px-3 sm:px-6 py-2 sm:py-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg sm:rounded-xl shadow-sm dark:shadow-2xl transition-all duration-300">
@@ -22,9 +16,9 @@ const Header = () => {
         <div className="min-w-0">
           {/* Mobile: Shows "Course Reg." | Laptop: Shows "Course Registration" */}
           <h1 className="text-xs sm:text-base md:text-lg font-bold tracking-tight truncate dark:text-white">
-            <span className="sm:hidden">Course Reg.</span>
+            <span className="sm:hidden">Backlog Reg.</span>
             <span className="hidden sm:inline">
-              Course{" "}
+              Backlog{" "}
               <span className="text-indigo-600 dark:text-indigo-400">
                 Registration
               </span>
@@ -44,9 +38,9 @@ const Header = () => {
         <div className="sm:hidden">
           <p
             className="text-xs text-slate-900 dark:text-slate-200 font-medium"
-            title={authUser?.username || "Student"}
+            title={rollNumber || "Student"}
           >
-            Hi, {truncateUsername(authUser?.username, 12)}!
+            Hi, {rollNumber || "Student"}!
           </p>
         </div>
 
@@ -54,9 +48,9 @@ const Header = () => {
         <div className="hidden sm:block">
           <p
             className="text-sm text-slate-900 dark:text-slate-200 font-medium"
-            title={authUser?.username || "Student"}
+            title={rollNumber || "Student"}
           >
-            Welcome, {authUser?.username || "Student"}!
+            Welcome, {rollNumber || "Student"}!
           </p>
           <p className="text-[10px] text-slate-500 dark:text-slate-400">
             Manage your registrations

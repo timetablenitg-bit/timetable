@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import Navbaar from "../components/Navbaar";
 import TableModal from "../components/TableModal";
 import { useAuthStore } from "../store/useAuthStore";
-import NoticeBoard from "../components/Student/NoticeBoard";
+// import NoticeBoard from "../components/Student/NoticeBoard";
 
 import CourseRegistration from "../components/Student/CourseRegistration";
 
@@ -64,8 +64,8 @@ const Student = () => {
         return <TableModal />;
       case "registration":
         return <CourseRegistration />;
-      case "notices":
-        return <NoticeBoard />;
+      // case "notices":
+      //   return <NoticeBoard />;
       default:
         return <TableModal />;
     }
@@ -74,8 +74,8 @@ const Student = () => {
   // 📋 Sidebar Menu Items mapped to components
   const menuItems = [
     { key: "timetable", label: "My Timetable", icon: CalendarDays },
-    { key: "registration", label: "Course Registration", icon: BookPlus },
-    { key: "notices", label: "Notice Board", icon: Bell },
+    { key: "registration", label: "Backlog Registration", icon: BookPlus },
+    // { key: "notices", label: "Notice Board", icon: Bell },
   ];
 
   return (

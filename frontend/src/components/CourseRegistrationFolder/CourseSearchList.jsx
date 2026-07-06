@@ -34,7 +34,7 @@ const CourseSearchList = ({
 
             return (
               <div
-                key={course.code}
+                key={course._id}
                 className={`group relative p-4 rounded-xl border transition-all duration-200 ${
                   isSelected
                     ? "bg-emerald-50/50 dark:bg-emerald-950/10 border-emerald-200 dark:border-emerald-800"

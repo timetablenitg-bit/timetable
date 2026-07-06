@@ -28,7 +28,6 @@ const InchargeNavbaar = () => {
   // Function to get dashboard path based on user role
   const getDashboardPath = () => {
     const role = authUser?.role;
-    console.log("User role:", role); // Debug log
     switch (role) {
       case "admin":
         return "/admin";
@@ -49,7 +48,6 @@ const InchargeNavbaar = () => {
     if (linkName === "Home") {
       // If it's the home link, redirect based on role
       const dashboardPath = getDashboardPath();
-      console.log("Redirecting to dashboard:", dashboardPath);
       navigate(dashboardPath);
     } else if (href && href !== "#") {
       navigate(href);
@@ -58,15 +56,14 @@ const InchargeNavbaar = () => {
 
   // Handle logo click
   const handleLogoClick = () => {
-    const dashboardPath = getDashboardPath();
-    console.log("Logo clicked, redirecting to:", dashboardPath);
-    navigate(dashboardPath);
+    // const dashboardPath = getDashboardPath();
+    // console.log("Logo clicked, redirecting to:", dashboardPath);
+    // navigate(dashboardPath);
+    navigate("/");
   };
 
   // Added Lucide icons to the navLinks array
   const navLinks = [
-    { name: "Home", href: "/incharge", icon: <Home size={16} /> },
-    { name: "About Us", href: "#", icon: <Info size={16} /> },
     {
       name: "Documentation",
       href: "/doc",
@@ -132,21 +129,6 @@ const InchargeNavbaar = () => {
               </div>
             </div>
 
-            {/* Notifications */}
-            <button
-              onClick={() => setOpenNotification(true)}
-              className="relative text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition flex items-center gap-2 cursor-pointer"
-            >
-              <div className="relative">
-                <Bell size={18} />
-                <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                  <span className="animate-ping absolute h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                  <span className="relative h-2.5 w-2.5 bg-red-500 rounded-full"></span>
-                </span>
-              </div>
-              <span className="text-sm font-medium">Inbox</span>
-            </button>
-
             {/* Desktop User profile trigger */}
             <div
               onClick={() => setOpenProfile(true)}
@@ -172,17 +154,6 @@ const InchargeNavbaar = () => {
 
           {/* Mobile Right Side Controls */}
           <div className="md:hidden flex items-center gap-2">
-            <button
-              onClick={() => setOpenNotification(true)}
-              className="relative p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors cursor-pointer"
-            >
-              <Bell size={20} />
-              <span className="absolute top-2 right-2 flex h-2 w-2">
-                <span className="animate-ping absolute h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                <span className="relative h-2 w-2 bg-red-500 rounded-full"></span>
-              </span>
-            </button>
-
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               className="p-1.5 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"

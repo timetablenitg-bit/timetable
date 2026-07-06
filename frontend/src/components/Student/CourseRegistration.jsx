@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import Header from "../CourseRegistrationFolder/Header";
 import StudentInfoCard from "../CourseRegistrationFolder/StudentInfoCard";
 import CurrentSemesterCard from "../CourseRegistrationFolder/CurrentSemesterCard";
-import CompletedSemestersList from "../CourseRegistrationFolder/CompletedSemestersList";
 import CourseRegistrationForm from "../CourseRegistrationFolder/CourseRegistrationForm";
 import { useStudentStore } from "../../store/useStudentStore";
 
@@ -17,31 +16,16 @@ const CourseRegistration = () => {
     fetchMyBatch,
     currentRegistration,
     fetchAcademicSessions,
-    startCourseRegistration,
     getMyCourseRegistration,
-    fetchCoursesOfCurrentSemester,
-    currentSemAvailableCourses,
     allCourseCatalogue,
     fetchAllCourseCatalogue,
   } = useStudentStore();
 
   const handleRegisterClick = async (session) => {
-    console.log("Register clicked for session:", session);
-    let registration = await getMyCourseRegistration(session._id);
-
-    if (!registration) {
-      registration = await startCourseRegistration({
-        sessionId: session._id,
-        batchId: myBatch._id, // ← now you have it
-      });
-    }
-
-    if (!registration) return;
-
-    await fetchCoursesOfCurrentSemester();
+    await getMyCourseRegistration(session._id);
     await fetchAllCourseCatalogue();
 
-    setSelectedBatch({ session, batch: myBatch }); // pass both cleanly
+    setSelectedBatch({ session, batch: myBatch });
     setShowRegistrationForm(true);
   };
 
@@ -52,20 +36,24 @@ const CourseRegistration = () => {
   useEffect(() => {
     fetchAcademicSessions();
     fetchMyBatch();
-    // console.log(academicSessions);
   }, [fetchAcademicSessions, fetchMyBatch]);
 
   const activeSession = academicSessions?.find((s) => s.isActive);
-  const inactiveSessions = academicSessions?.filter((s) => !s.isActive);
+
+  useEffect(() => {
+    if (activeSession?._id) {
+      getMyCourseRegistration(activeSession._id);
+    }
+  }, [activeSession?._id, getMyCourseRegistration]);
 
   const normalize = (course) => ({
     ...course,
     code: course.course_code,
     name: course.course_name,
     type: course.course_type === "THEORY" ? "Theory" : "Lab",
-    L: course.hours?.lecture ?? 0,
-    T: course.hours?.tutorial ?? 0,
-    P: course.hours?.practical ?? 0,
+    L: course.lecture ?? 0,
+    T: course.tutorial ?? 0,
+    P: course.practical ?? 0,
   });
 
   if (isLoading) {
@@ -85,31 +73,21 @@ const CourseRegistration = () => {
     <div className="w-full h-full flex flex-col gap-4">
       <Header />
 
-      <main className="flex-1">
+      <main className="flex-1 flex flex-col">
         {!showRegistrationForm ? (
-          <div className="space-y-6">
-            {/* Student Information Card */}
+          <div className="flex-1 flex flex-col gap-4">
             <StudentInfoCard session={activeSession} />
-
-            {/* Current Active Semester - Displayed First */}
-            {activeSession && (
-              <CurrentSemesterCard
-                semester={activeSession}
-                onRegister={handleRegisterClick}
-              />
-            )}
-
-            {/* Completed Semesters Section - Displayed Below Current Semester */}
-            {inactiveSessions && (
-              <CompletedSemestersList semesters={inactiveSessions} />
-            )}
+            <CurrentSemesterCard
+              semester={activeSession}
+              onRegister={handleRegisterClick}
+              isRegistered={currentRegistration?.status === "COMPLETED"}
+            />
           </div>
         ) : (
           <CourseRegistrationForm
-            regularCourses={currentSemAvailableCourses.map(normalize)} // was currentSemAvailableCourses
-            allCourses={allCourseCatalogue.map(normalize)} // new — fetch full catalogue if student has backlogs
+            allCourses={allCourseCatalogue.map(normalize)}
             batchDetails={{ ...selectedBatch, sessionId: activeSession._id }}
-            existingRegistration={currentRegistration} // from store
+            existingRegistration={currentRegistration}
             onBack={handleBackToList}
           />
         )}

@@ -56,14 +56,10 @@ const CourseRegistrationTab = ({ session }) => {
         const completed = students.filter(
           (s) => s.registration?.status === "COMPLETED",
         );
-        const inProgress = students.filter(
-          (s) => s.registration?.status === "IN_PROGRESS",
-        );
         const notStarted = students.filter(
           (s) => !s.registration || s.registration?.status === "NOT_STARTED",
         );
         const isOpen = !!openBatches[batch._id];
-        const pct = Math.round((completed.length / students.length) * 100) || 0;
 
         return (
           <div
@@ -94,11 +90,6 @@ const CourseRegistrationTab = ({ session }) => {
                 <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
                   {completed.length} completed
                 </span>
-                {inProgress.length > 0 && (
-                  <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                    {inProgress.length} in progress
-                  </span>
-                )}
                 {notStarted.length > 0 && (
                   <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400">
                     {notStarted.length} not started
@@ -110,18 +101,13 @@ const CourseRegistrationTab = ({ session }) => {
             {isOpen && (
               <>
                 {/* Stats bar */}
-                <div className="grid grid-cols-4 divide-x divide-slate-100 dark:divide-slate-800 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/30">
+                <div className="grid grid-cols-3 divide-x divide-slate-100 dark:divide-slate-800 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/30">
                   {[
                     { label: "Total", value: students.length, color: "" },
                     {
                       label: "Completed",
                       value: completed.length,
                       color: "text-emerald-600 dark:text-emerald-400",
-                    },
-                    {
-                      label: "In Progress",
-                      value: inProgress.length,
-                      color: "text-amber-500 dark:text-amber-400",
                     },
                     {
                       label: "Not Started",
@@ -149,14 +135,9 @@ const CourseRegistrationTab = ({ session }) => {
                 <div className="divide-y divide-slate-100 dark:divide-slate-800 border-t border-slate-100 dark:border-slate-800">
                   {students.map(({ student, registration }) => {
                     const isCompleted = registration?.status === "COMPLETED";
-                    const isInProgress = registration?.status === "IN_PROGRESS";
-                    const isExpandable = isCompleted || isInProgress;
                     const isStudentOpen = !!openStudents[student._id];
 
-                    const courses = [
-                      ...(registration?.regularCourses || []),
-                      ...(registration?.backlogCourses || []),
-                    ];
+                    const courses = registration?.backlogCourses || [];
                     const totalCredits = courses.reduce(
                       (sum, c) => sum + (c.course?.credits || 0),
                       0,
@@ -166,10 +147,10 @@ const CourseRegistrationTab = ({ session }) => {
                       <div key={student._id}>
                         <button
                           onClick={() =>
-                            isExpandable && toggleStudent(student._id)
+                            isCompleted && toggleStudent(student._id)
                           }
                           className={`w-full flex items-center justify-between px-5 py-3 text-left transition-colors ${
-                            isExpandable
+                            isCompleted
                               ? "hover:bg-slate-50 dark:hover:bg-slate-800/30 cursor-pointer"
                               : "cursor-default"
                           }`}
@@ -177,20 +158,14 @@ const CourseRegistrationTab = ({ session }) => {
                           <div className="flex items-center gap-3">
                             <div
                               className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                                isCompleted
-                                  ? "bg-emerald-500"
-                                  : isInProgress
-                                    ? "bg-amber-400"
-                                    : "bg-red-400"
+                                isCompleted ? "bg-emerald-500" : "bg-red-400"
                               }`}
                             />
                             <div
                               className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 ${
                                 isCompleted
                                   ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400"
-                                  : isInProgress
-                                    ? "bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400"
-                                    : "bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400"
+                                  : "bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400"
                               }`}
                             >
                               {getInitials(student.fullName || student.name)}
@@ -201,7 +176,7 @@ const CourseRegistrationTab = ({ session }) => {
                               </p>
                               <p className="text-xs text-slate-400">
                                 {student.rollNo || student.studentId}
-                                {isExpandable
+                                {isCompleted
                                   ? ` · ${courses.length} courses · ${totalCredits} credits`
                                   : " · Not yet registered"}
                               </p>
@@ -212,18 +187,12 @@ const CourseRegistrationTab = ({ session }) => {
                               className={`text-xs font-medium px-2.5 py-1 rounded-full ${
                                 isCompleted
                                   ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                                  : isInProgress
-                                    ? "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                                    : "bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400"
+                                  : "bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400"
                               }`}
                             >
-                              {isCompleted
-                                ? "Completed"
-                                : isInProgress
-                                  ? "In Progress"
-                                  : "Not Started"}
+                              {isCompleted ? "Completed" : "Not Started"}
                             </span>
-                            {isExpandable &&
+                            {isCompleted &&
                               (isStudentOpen ? (
                                 <ChevronDown
                                   size={14}
@@ -249,20 +218,11 @@ const CourseRegistrationTab = ({ session }) => {
                                   <th className="px-4 py-2 text-center w-[80px]">
                                     Credits
                                   </th>
-                                  <th className="px-4 py-2 text-center w-[90px]">
-                                    Type
-                                  </th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                                 {courses.map((entry, i) => {
                                   const c = entry.course;
-                                  const isBacklog =
-                                    registration?.backlogCourses?.some(
-                                      (b) =>
-                                        b.course?._id?.toString() ===
-                                        c?._id?.toString(),
-                                    );
                                   return (
                                     <tr
                                       key={i}
@@ -276,17 +236,6 @@ const CourseRegistrationTab = ({ session }) => {
                                       </td>
                                       <td className="px-4 py-2.5 text-xs text-center font-medium text-slate-700 dark:text-slate-300">
                                         {c?.credits}
-                                      </td>
-                                      <td className="px-4 py-2.5 text-center">
-                                        <span
-                                          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                                            isBacklog
-                                              ? "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
-                                              : "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400"
-                                          }`}
-                                        >
-                                          {isBacklog ? "backlog" : "regular"}
-                                        </span>
                                       </td>
                                     </tr>
                                   );

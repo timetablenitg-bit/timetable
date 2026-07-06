@@ -1,10 +1,9 @@
-import React, { useState, useCallback } from "react";
+import React, { useState } from "react";
 import {
   Send,
   BookCheck,
   Search,
   AlertCircle,
-  FileDown,
   CheckCircle,
   ListPlus,
   ArrowLeft,
@@ -17,16 +16,14 @@ import CourseSearchList from "./CourseSearchList";
 import RegistrationSummary from "./RegistrationSummary";
 
 const CourseRegistrationForm = ({
-  regularCourses, // semester courses for this student's batch
-  allCourses, // full catalogue — for backlog tab
+  allCourses, // full catalogue — backlog courses are picked from here
   batchDetails, // the session object
   existingRegistration, // pre-filled if resuming (from getMyCourseRegistration)
   onBack,
   onRegistrationComplete,
 }) => {
-  const { saveCourses, submitRegistration } = useStudentStore();
+  const { submitRegistration } = useStudentStore();
 
-  const [tab, setTab] = useState("regular");
   const [searchTerm, setSearchTerm] = useState("");
 
   const normalize = (course) => ({
@@ -39,24 +36,11 @@ const CourseRegistrationForm = ({
     P: course.hours?.practical ?? 0,
   });
 
-  const [selectedRegular, setSelectedRegular] = useState(
-    () =>
-      existingRegistration?.regularCourses
-        ?.filter((c) => c.course && typeof c.course === "object") // ← guard
-        ?.map((c) => ({
-          ...normalize(c.course),
-          registrationType: "regular",
-        })) || [],
-  );
-
-  const [selectedBacklog, setSelectedBacklog] = useState(
+  const [selectedCourses, setSelectedCourses] = useState(
     () =>
       existingRegistration?.backlogCourses
-        ?.filter((c) => c.course && typeof c.course === "object") // ← guard
-        ?.map((c) => ({
-          ...normalize(c.course),
-          registrationType: "backlog",
-        })) || [],
+        ?.filter((c) => c.course && typeof c.course === "object")
+        ?.map((c) => normalize(c.course)) || [],
   );
 
   const [isSubmitted, setIsSubmitted] = useState(
@@ -64,102 +48,59 @@ const CourseRegistrationForm = ({
   );
   const [lastSubmittedSnapshot, setLastSubmittedSnapshot] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
   const isCompleted = existingRegistration?.status === "COMPLETED";
   const sessionId = batchDetails?.sessionId;
+  const batchId = batchDetails?.batch?._id;
 
-  const allSelected = [
-    ...selectedRegular.map((c) => ({ ...c, registrationType: "regular" })),
-    ...selectedBacklog.map((c) => ({ ...c, registrationType: "backlog" })),
-  ];
-  console.log("All selected courses:", allSelected);
-
-  const totalCredits = allSelected.reduce(
+  const totalCredits = selectedCourses.reduce(
     (sum, c) => sum + (c.credits || 0),
     0,
   );
 
-  const autoSave = useCallback(
-    async (regular, backlog) => {
-      if (!sessionId || isCompleted) return;
-      setIsSaving(true);
-      await saveCourses({
-        sessionId,
-        regularCourses: regular
-          .filter((c) => c._id) // ← guard
-          .map((c) => ({ course: c._id, courseCode: c.code })),
-        backlogCourses: backlog
-          .filter((c) => c._id) // ← guard
-          .map((c) => ({ course: c._id, courseCode: c.code })),
-      });
-      setIsSaving(false);
-    },
-    [sessionId, isCompleted, saveCourses],
-  );
-
-  const addCourse = (course, registrationType) => {
-    if (registrationType === "regular") {
-      if (selectedRegular.find((c) => c.code === course.code)) {
-        toast.warning(`${course.code} is already added.`);
-        return;
-      }
-      const next = [...selectedRegular, course];
-      setSelectedRegular(next);
-      autoSave(next, selectedBacklog);
-    } else {
-      if (selectedBacklog.find((c) => c.code === course.code)) {
-        toast.warning(`${course.code} is already added.`);
-        return;
-      }
-      const next = [...selectedBacklog, course];
-      setSelectedBacklog(next);
-      autoSave(selectedRegular, next);
+  const addCourse = (course) => {
+    if (selectedCourses.find((c) => c.code === course.code)) {
+      toast.warning(`${course.code} is already added.`);
+      return;
     }
+    const backlogCourse = { ...course, registrationType: "backlog" };
+    setSelectedCourses((prev) => [...prev, backlogCourse]);
     toast.success(`Added ${course.name}`);
   };
 
   const removeCourse = (code) => {
-    if (selectedRegular.find((c) => c.code === code)) {
-      const next = selectedRegular.filter((c) => c.code !== code);
-      setSelectedRegular(next);
-      autoSave(next, selectedBacklog);
-    } else {
-      const next = selectedBacklog.filter((c) => c.code !== code);
-      setSelectedBacklog(next);
-      autoSave(selectedRegular, next);
-    }
+    setSelectedCourses((prev) => prev.filter((c) => c.code !== code));
     toast.success("Course removed.");
   };
 
   const handleFinalSubmit = async () => {
-    if (allSelected.length === 0) {
+    if (selectedCourses.length === 0) {
       toast.error("Add at least one course before submitting.");
       return;
     }
     setIsSubmitting(true);
-    const ok = await submitRegistration(sessionId);
+    const ok = await submitRegistration({
+      sessionId,
+      batchId,
+      backlogCourses: selectedCourses
+        .filter((c) => c._id)
+        .map((c) => ({ course: c._id, courseCode: c.code })),
+    });
     setIsSubmitting(false);
     if (ok) {
-      setLastSubmittedSnapshot(allSelected);
+      setLastSubmittedSnapshot(selectedCourses);
       setIsSubmitted(true);
       setShowConfirm(false);
       if (onRegistrationComplete) onRegistrationComplete();
     }
   };
 
-  const coursesForTab = tab === "regular" ? regularCourses : allCourses;
-  const selectedCodesForTab =
-    tab === "regular"
-      ? selectedRegular.map((c) => c.code)
-      : selectedBacklog.map((c) => c.code);
+  const selectedCodes = selectedCourses.map((c) => c.code);
 
   // ── success view ──
   if (isSubmitted) {
-    const snap = lastSubmittedSnapshot || allSelected;
-    const regularSnap = snap.filter((c) => c.registrationType === "regular");
-    const backlogSnap = snap.filter((c) => c.registrationType === "backlog");
+    const snap = lastSubmittedSnapshot || selectedCourses;
     const theoryCount = snap.filter((c) => c.type === "Theory").length;
     const labCount = snap.filter((c) => c.type === "Lab").length;
     const totalCredits = snap.reduce((sum, c) => sum + (c.credits || 0), 0);
@@ -192,7 +133,6 @@ const CourseRegistrationForm = ({
     return (
       <div className="flex-1 flex items-center justify-center p-4">
         <div className="max-w-lg w-full mx-auto space-y-4">
-          {/* Header */}
           <div className="text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
             <div className="w-14 h-14 bg-emerald-100 dark:bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-3">
               <CheckCircle
@@ -209,45 +149,24 @@ const CourseRegistrationForm = ({
             </p>
           </div>
 
-          {/* Regular courses */}
-          {regularSnap.length > 0 && (
+          {snap.length > 0 && (
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
-              <div className="px-4 py-3 bg-emerald-50 dark:bg-emerald-900/20 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
-                  Regular Courses
-                </span>
-                <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                  {regularSnap.reduce((s, c) => s + (c.credits || 0), 0)} cr
-                </span>
-              </div>
-              <div className="px-4">
-                {regularSnap.map((c) => (
-                  <CourseRow key={c.code} course={c} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Backlog courses */}
-          {backlogSnap.length > 0 && (
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
-              <div className="px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-widest text-amber-700 dark:text-amber-400">
+              <div className="px-4 py-3 bg-slate-50 dark:bg-slate-800/40 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400">
                   Backlog Courses
                 </span>
-                <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">
-                  {backlogSnap.reduce((s, c) => s + (c.credits || 0), 0)} cr
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  {totalCredits} cr
                 </span>
               </div>
               <div className="px-4">
-                {backlogSnap.map((c) => (
-                  <CourseRow key={c.code} course={c} />
+                {snap.map((c) => (
+                  <CourseRow key={c._id || c.code} course={c} />
                 ))}
               </div>
             </div>
           )}
 
-          {/* Back button */}
           {onBack && (
             <button
               onClick={onBack}
@@ -264,25 +183,16 @@ const CourseRegistrationForm = ({
   // ── main form ──
   return (
     <div className="h-full w-full flex flex-col">
-      {/* Header */}
-      <div className="flex-shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-200 dark:border-gray-700">
-        <div className="flex items-center gap-4">
-          {onBack && (
-            <button
-              onClick={onBack}
-              className="flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 transition-colors"
-            >
-              <ArrowLeft size={16} />
-              Back to Dashboard
-            </button>
-          )}
-          {isSaving && (
-            <span className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">
-              <Loader2 size={12} className="animate-spin" />
-              Saving…
-            </span>
-          )}
-        </div>
+      <div className="shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 transition-colors"
+          >
+            <ArrowLeft size={16} />
+            Back to Dashboard
+          </button>
+        )}
 
         {isCompleted ? (
           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800">
@@ -290,11 +200,11 @@ const CourseRegistrationForm = ({
             Submitted — Locked
           </span>
         ) : (
-          allSelected.length > 0 && (
+          selectedCourses.length > 0 && (
             <button
               onClick={() => setShowConfirm(true)}
               disabled={isSubmitting}
-              className="flex items-center justify-center gap-2 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-400 text-white text-sm font-medium rounded-lg shadow-md hover:shadow-lg transition-all duration-200 whitespace-nowrap"
+              className="flex items-center justify-center gap-2 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-400 text-white text-sm font-medium rounded-lg shadow-sm transition-colors whitespace-nowrap"
             >
               <Send size={16} />
               Finalize Registration
@@ -303,85 +213,25 @@ const CourseRegistrationForm = ({
         )}
       </div>
 
-      {/* Session banner */}
-      {batchDetails && (
-        <div className="flex-shrink-0 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-gray-800 dark:to-gray-800/50 rounded-xl p-4 border border-indigo-100 dark:border-gray-700 my-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                {batchDetails.term} Term · {batchDetails.academic_year}
-              </h3>
-            </div>
-            <div className="px-3 py-1.5 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg">
-              <span className="text-xs font-medium text-indigo-700 dark:text-indigo-400">
-                Registration Open
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* single, calm info banner instead of two competing colored ones */}
+      <div className="shrink-0 mt-4 flex items-start gap-3 p-3 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 rounded-xl">
+        <AlertCircle className="text-slate-400 shrink-0 mt-0.5" size={16} />
+        <p className="text-xs text-slate-600 dark:text-slate-300">
+          {isCompleted
+            ? "Registration has been submitted and is locked. No changes can be made."
+            : "Review your selected courses carefully — once submitted, you cannot modify your registration."}
+        </p>
+      </div>
 
-      {/* Note / lock warning */}
-      {isCompleted ? (
-        <div className="flex-shrink-0 flex items-start gap-3 p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 rounded-xl mb-2">
-          <AlertCircle className="text-amber-500 shrink-0 mt-0.5" size={16} />
-          <p className="text-xs text-amber-900 dark:text-amber-300">
-            Registration has been submitted and is locked. No changes can be
-            made.
-          </p>
-        </div>
-      ) : (
-        <div className="flex-shrink-0 mt-4 flex items-start gap-3 p-3 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800/50 rounded-xl">
-          <AlertCircle className="text-blue-500 shrink-0 mt-0.5" size={16} />
-          <p className="text-xs text-blue-900 dark:text-blue-300">
-            <span className="font-bold">Note:</span> Review your selected
-            courses carefully. Once submitted, you cannot modify your
-            registration.
-          </p>
-        </div>
-      )}
-
-      {/* Main Content */}
-      <div className="flex-1 min-h-0 mt-2">
+      <div className="flex-1 min-h-0 mt-4">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full">
           {/* Left — Course Picker */}
           <div className="lg:col-span-6 h-full">
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xl flex flex-col h-full">
-              {/* Tabs */}
-              <div className="flex-shrink-0 flex border-b border-slate-100 dark:border-slate-800">
-                {["regular", "backlog"].map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => {
-                      setTab(t);
-                      setSearchTerm("");
-                    }}
-                    className={`flex-1 py-3 text-sm font-medium transition-colors capitalize border-b-2 ${
-                      tab === t
-                        ? "border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400"
-                        : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
-                    }`}
-                  >
-                    {t === "regular" ? "Regular" : "Backlog"}
-                    {t === "regular" && selectedRegular.length > 0 && (
-                      <span className="ml-1.5 text-xs text-gray-400">
-                        ({selectedRegular.length})
-                      </span>
-                    )}
-                    {t === "backlog" && selectedBacklog.length > 0 && (
-                      <span className="ml-1.5 text-xs text-gray-400">
-                        ({selectedBacklog.length})
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
-
-              {/* Search header */}
-              <div className="flex-shrink-0 p-4 lg:p-5 border-b border-slate-100 dark:border-slate-800 space-y-3 bg-slate-50/50 dark:bg-slate-800/30">
-                <h2 className="text-lg font-bold flex items-center gap-2 dark:text-white">
-                  <BookCheck size={20} className="text-emerald-500" />
-                  {tab === "regular" ? "Semester Courses" : "All Courses"}
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col h-full">
+              <div className="shrink-0 p-4 border-b border-slate-100 dark:border-slate-800 space-y-3">
+                <h2 className="text-base font-bold flex items-center gap-2 dark:text-white">
+                  <BookCheck size={18} className="text-emerald-500" />
+                  All Courses
                 </h2>
                 <div className="relative">
                   <Search
@@ -400,10 +250,10 @@ const CourseRegistrationForm = ({
 
               <div className="flex-1 min-h-0 overflow-y-auto">
                 <CourseSearchList
-                  courses={coursesForTab}
+                  courses={allCourses}
                   searchTerm={searchTerm}
-                  onAdd={(course) => addCourse(course, tab)}
-                  selectedCodes={selectedCodesForTab}
+                  onAdd={addCourse}
+                  selectedCodes={selectedCodes}
                   disabled={isCompleted}
                 />
               </div>
@@ -412,60 +262,41 @@ const CourseRegistrationForm = ({
 
           {/* Right — Summary */}
           <div className="lg:col-span-6 h-full">
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xl flex flex-col h-full">
-              <div className="flex-shrink-0 p-4 lg:p-5 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-gray-800 dark:to-gray-800/50">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center">
-                    <ListPlus
-                      size={20}
-                      className="text-indigo-600 dark:text-indigo-400"
-                    />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-bold text-gray-800 dark:text-white">
-                      Registration Summary
-                    </h2>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Review your selected courses
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col h-full">
+              <div className="shrink-0 p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <div>
+                  <h2 className="text-base font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                    <ListPlus size={18} className="text-indigo-500" />
+                    Registration Summary
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Review your selected courses
+                  </p>
+                </div>
+                {selectedCourses.length > 0 && (
+                  <div className="text-right shrink-0">
+                    <p className="text-xs text-slate-400">
+                      {selectedCourses.length} courses
+                    </p>
+                    <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
+                      {totalCredits} credits
                     </p>
                   </div>
-                </div>
+                )}
               </div>
 
-              <div className="flex-1 min-h-0 overflow-hidden">
+              <div className="flex-1 min-h-0">
                 <RegistrationSummary
-                  selectedCourses={allSelected}
+                  selectedCourses={selectedCourses}
                   onRemove={removeCourse}
                   disabled={isCompleted}
                 />
               </div>
-
-              {allSelected.length > 0 && (
-                <div className="flex-shrink-0 p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/30">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-gray-600 dark:text-gray-400">
-                      Total Courses:
-                    </span>
-                    <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                      {allSelected.length}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600 dark:text-gray-400">
-                      Total Credits:
-                    </span>
-                    <span className="text-base font-bold text-indigo-600 dark:text-indigo-400">
-                      {totalCredits}
-                    </span>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Confirm dialog */}
       {showConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-6 max-w-sm w-[90%]">
@@ -475,13 +306,9 @@ const CourseRegistrationForm = ({
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-5 leading-relaxed">
               You're submitting{" "}
               <span className="font-semibold text-gray-700 dark:text-gray-300">
-                {selectedRegular.length} regular
+                {selectedCourses.length} courses
               </span>{" "}
-              and{" "}
-              <span className="font-semibold text-gray-700 dark:text-gray-300">
-                {selectedBacklog.length} backlog
-              </span>{" "}
-              courses ({totalCredits} credits total). This cannot be undone.
+              ({totalCredits} credits total). This cannot be undone.
             </p>
             <div className="flex gap-3 justify-end">
               <button

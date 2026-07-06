@@ -16,33 +16,56 @@ const TableModal = () => {
     setIsLoading(true);
     setError(null);
     try {
-      // 1️⃣  Active session — returns a single object { _id, term, academic_year, isActive }
-      const sessRes = await axiosInstance.get(
-        API_PATHS.TIMETABLE_PUBLIC.ACTIVE_SESSION,
-      );
-      const session = sessRes.data?.data;
-      if (!session?._id) throw new Error("No active academic session found.");
+      // 1️⃣ Active session — returns a single object { _id, term, academic_year, isActive }
+      let session = null;
+      try {
+        const sessRes = await axiosInstance.get(
+          API_PATHS.TIMETABLE_PUBLIC.ACTIVE_SESSION,
+        );
+        session = sessRes.data?.data ?? null;
+      } catch (err) {
+        // No active session is a normal empty state, not an error
+        if (err?.response?.status !== 404) throw err;
+      }
 
-      // 2️⃣  Batch + schedule + slots in parallel
-      const [batchRes, schedRes, slotsRes] = await Promise.all([
-        axiosInstance.get(API_PATHS.STUDENT.MY_BATCH),
-        axiosInstance.get(
+      if (!session?._id) {
+        // Nothing to fetch — just show the empty state, no error
+        setPresetBatch(null);
+        setScheduleData(null);
+        setSlotsData(null);
+        return;
+      }
+
+      // 2️⃣ Batch + schedule + slots in parallel — each handled independently
+      // so a missing schedule/slots doesn't kill the whole page
+      const safeGet = async (url) => {
+        try {
+          const res = await axiosInstance.get(url);
+          return res.data?.data ?? res.data ?? null;
+        } catch (err) {
+          if (err?.response?.status === 404) return null;
+          throw err;
+        }
+      };
+
+      const [bp, sched, slots] = await Promise.all([
+        safeGet(API_PATHS.STUDENT.MY_BATCH),
+        safeGet(
           `${API_PATHS.TIMETABLE_PUBLIC.SCHEDULE}?session_id=${session._id}`,
         ),
-        axiosInstance.get(
+        safeGet(
           `${API_PATHS.TIMETABLE_PUBLIC.SLOTS}?session_id=${session._id}`,
         ),
       ]);
 
-      // MY_BATCH may return { data: "CSE-5" } or { data: { name: "CSE-5" } }
-      const bp = batchRes.data?.data ?? batchRes.data;
       const batchName =
         typeof bp === "string" ? bp : (bp?.name ?? bp?.batch_name ?? null);
 
       setPresetBatch(batchName);
-      setScheduleData(schedRes.data?.data ?? null);
-      setSlotsData(slotsRes.data?.data ?? null);
+      setScheduleData(sched);
+      setSlotsData(slots);
     } catch (err) {
+      // Only genuine failures (5xx, network errors, etc.) land here
       setError(
         err?.response?.data?.message ??
           err?.message ??

@@ -27,26 +27,6 @@ export const useStudentStore = create((set, get) => ({
     }
   },
 
-  fetchCoursesOfCurrentSemester: async () => {
-    const user = useAuthStore.getState().authUser; // wherever you store logged-in user
-    set({ isLoading: true, error: null });
-    try {
-      const res = await axiosInstance.get(
-        API_PATHS.COURSE.GET_BY_SEM_AND_BRANCH(
-          user.current_sem,
-          user.department,
-        ),
-      );
-      set({ currentSemAvailableCourses: res.data.courses });
-    } catch (err) {
-      const message = err.response?.data?.message || "Failed to fetch courses";
-      set({ error: message });
-      toast.error(message);
-    } finally {
-      set({ isLoading: false });
-    }
-  },
-
   fetchAllCourseCatalogue: async () => {
     set({ isLoading: true, error: null });
 
@@ -79,6 +59,7 @@ export const useStudentStore = create((set, get) => ({
       set({ isLoading: false });
     }
   },
+
   getMyCourseRegistration: async (sessionId) => {
     set({ isLoading: true, error: null });
     try {
@@ -102,60 +83,21 @@ export const useStudentStore = create((set, get) => ({
     }
   },
 
-  startCourseRegistration: async ({ sessionId, batchId, rollNo }) => {
+  submitRegistration: async ({ sessionId, batchId, backlogCourses }) => {
     set({ isLoading: true, error: null });
     try {
       const res = await axiosInstance.post(
-        API_PATHS.STUDENT.START_REGISTRATION,
+        API_PATHS.STUDENT.SUBMIT_REGISTRATION,
         {
-          sessionId,
-          batchId,
-          rollNo,
+          session: sessionId,
+          batch: batchId,
+          backlogCourses,
         },
       );
-      set({ currentRegistration: res.data.data });
-      return res.data.data;
-    } catch (err) {
-      const message =
-        err.response?.data?.message || "Failed to start registration";
-      set({ error: message });
-      toast.error(message);
-      return null;
-    } finally {
-      set({ isLoading: false });
-    }
-  },
-
-  saveCourses: async ({ sessionId, regularCourses, backlogCourses }) => {
-    set({ isLoading: true, error: null });
-    try {
-      const res = await axiosInstance.put(API_PATHS.STUDENT.SAVE_COURSES, {
-        session: sessionId,
-        regularCourses,
-        backlogCourses,
-      });
-      set({ currentRegistration: res.data.registration });
-      toast.success("Courses saved!");
-      return true;
-    } catch (err) {
-      const message = err.response?.data?.message || "Failed to save courses";
-      set({ error: message });
-      toast.error(message);
-      return false;
-    } finally {
-      set({ isLoading: false });
-    }
-  },
-
-  submitRegistration: async (sessionId) => {
-    set({ isLoading: true, error: null });
-    try {
-      await axiosInstance.post(API_PATHS.STUDENT.SUBMIT_REGISTRATION, {
-        session: sessionId,
-      });
       set((state) => ({
         currentRegistration: {
           ...state.currentRegistration,
+          ...res.data.registration,
           status: "COMPLETED",
         },
       }));

@@ -6,13 +6,15 @@ import { useAuthStore } from "./store/useAuthStore";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 import Login from "./pages/Login";
-import Signup from "./pages/Signup";
+// import Signup from "./pages/Signup";
 import Student from "./pages/Student";
 import Faculty from "./pages/Faculty";
 import Incharge from "./pages/Incharge";
 import Homepage from "./pages/HomePage";
 import AcceptInvite from "./pages/AcceptInvite";
 import DocumentationPage from "./pages/DocumentationPage";
+import PublicRoute from "./components/PublicRoute";
+import NotFoundRedirect from "./components/NotFoundRedirect";
 // import GenerateTable from "./pages/GenerateTable";
 const App = () => {
   // 1. Pull the theme state from Zustand
@@ -43,16 +45,33 @@ const App = () => {
 
         <Routes>
           {/* --- Public Routes --- */}
-          <Route path="/" element={<Homepage />} />
-          <Route path="/login" element={<Login />} />
+
+          <Route
+            path="/"
+            element={
+              <PublicRoute>
+                <Homepage />
+              </PublicRoute>
+            }
+          />
+          <Route
+            path="/login"
+            element={
+              <PublicRoute>
+                <Login />
+              </PublicRoute>
+            }
+          />
           <Route path="/doc" element={<DocumentationPage />} />
-          {/* <Route path="/signup" element={<Signup />} /> */}
-          {/* <Route path="/faculty" element={<Faculty />} /> */}
-          {/* <Route path="/student" element={<Student />} /> */}
-          {/* <Route path="/incharge" element={<Incharge />} /> */}
-          {/* <Route path="/test" element={<TestPage />} /> */}
+          {/* <Route
+            path="/signup"
+            element={
+              <PublicRoute>
+                <Signup />
+              </PublicRoute>
+            }
+          /> */}
           <Route path="/accept-invite" element={<AcceptInvite />} />
-          {/* <Route path="/generate" element={<GenerateTable />} /> */}
 
           {/* --- Protected Routes --- */}
 
@@ -85,6 +104,7 @@ const App = () => {
               </ProtectedRoute>
             }
           />
+          <Route path="*" element={<NotFoundRedirect />} />
         </Routes>
       </div>
     </>
