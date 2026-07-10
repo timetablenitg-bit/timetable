@@ -1,5 +1,19 @@
 // GeneratedTimetableTab.jsx
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+//
+// CHANGED from the original:
+//   - New "Review" tab (ManualReviewPanel) with a pending-count badge, since
+//     overflow / choose_occurrences items now have nowhere else to be resolved.
+//   - Schedule save collapsed to a single saveSchedule(timetable_id, grid)
+//     call — no more separate "Save" vs "Save & Re-evaluate" (see EditToolbar).
+//   - Save warnings (adjacency/double-booking clashes introduced by a manual
+//     edit) are now displayed via EditToolbar's warnings prop.
+import React, {
+  useEffect,
+  useState,
+  useMemo,
+  useCallback,
+  useRef,
+} from "react";
 import {
   Loader2,
   LayoutGrid,
@@ -8,14 +22,25 @@ import {
   Pencil,
   RefreshCw,
   FileSpreadsheet,
+  Info,
+  Save,
+  ClipboardCheck,
 } from "lucide-react";
 import useAdminStore from "../../../../store/useAdminStore";
+import useManualReviewStore from "../../../../store/useManualReviewStore";
 import ScoreBadge from "./ScoreBadge";
 import EditToolbar from "./EditToolbar";
 import DualTrackScheduleView from "./DualTrackScheduleView";
 import EditableSlotsView from "./EditableSlotsView";
 import InstituteView from "./InstituteView";
-import { API_PATHS } from "../../../../utils/apiPaths";
+import ManualReviewPanel from "./ManualReviewPanel";
+
+const BASE_TABS = [
+  { key: "schedule", label: "Schedule", icon: Rows3 },
+  { key: "slots", label: "Slots", icon: LayoutGrid },
+  { key: "institute", label: "Institute", icon: CalendarDays },
+  { key: "review", label: "Review", icon: ClipboardCheck },
+];
 
 const GeneratedTimetableTab = ({ session }) => {
   const {
@@ -27,17 +52,25 @@ const GeneratedTimetableTab = ({ session }) => {
     fetchGeneratedSlots,
     fetchActiveSchedule,
     saveSchedule,
-    saveAndEvaluateSchedule,
     isSavingSchedule,
-    isEvaluatingSchedule,
+    isSavingSlots,
     scheduleError,
+    slotsError,
     exportTimetableExcel,
   } = useAdminStore();
+
+  const { items: reviewItems, fetchPendingItems } = useManualReviewStore();
 
   const [activeTab, setActiveTab] = useState("schedule");
   const [scheduleEditMode, setScheduleEditMode] = useState(false);
   const [slotsEditMode, setSlotsEditMode] = useState(false);
   const [localGrid, setLocalGrid] = useState(null);
+  const [saveWarnings, setSaveWarnings] = useState([]);
+
+  // Ref onto EditableSlotsView's imperative API (save / cancel / isDirty),
+  // so this parent's toolbar can drive it instead of it running its own
+  // competing save UI.
+  const slotsViewRef = useRef(null);
 
   const editMode =
     activeTab === "schedule"
@@ -55,16 +88,21 @@ const GeneratedTimetableTab = ({ session }) => {
     if (!session?._id) return;
     fetchGeneratedSlots(session._id);
     fetchActiveSchedule(session._id);
+    fetchPendingItems(session._id);
   }, [session?._id, timetableData]);
 
   // ── tab switch cancels active edit ────────────────────────────────────────
   const handleTabChange = (key) => {
     if (activeTab === "schedule" && scheduleEditMode) {
       setScheduleEditMode(false);
+      setSaveWarnings([]);
       if (activeScheduleData?.grid)
         setLocalGrid(structuredClone(activeScheduleData.grid));
     }
-    if (activeTab === "slots" && slotsEditMode) setSlotsEditMode(false);
+    if (activeTab === "slots" && slotsEditMode) {
+      slotsViewRef.current?.cancel();
+      setSlotsEditMode(false);
+    }
     setActiveTab(key);
   };
 
@@ -72,6 +110,7 @@ const GeneratedTimetableTab = ({ session }) => {
     if (activeTab === "schedule") {
       if (scheduleEditMode && activeScheduleData?.grid)
         setLocalGrid(structuredClone(activeScheduleData.grid));
+      setSaveWarnings([]);
       setScheduleEditMode((v) => !v);
     } else if (activeTab === "slots") {
       setSlotsEditMode((v) => !v);
@@ -81,7 +120,22 @@ const GeneratedTimetableTab = ({ session }) => {
   const handleCancelScheduleEdit = () => {
     if (activeScheduleData?.grid)
       setLocalGrid(structuredClone(activeScheduleData.grid));
+    setSaveWarnings([]);
     setScheduleEditMode(false);
+  };
+
+  // ── slots cancel / save (drives EditableSlotsView via ref) ───────────────
+  const handleCancelSlotsEdit = () => {
+    slotsViewRef.current?.cancel();
+    setSlotsEditMode(false);
+  };
+
+  const handleSaveSlots = async () => {
+    const result = await slotsViewRef.current?.save();
+    if (result?.ok) {
+      await fetchGeneratedSlots(session._id);
+      setSlotsEditMode(false);
+    }
   };
 
   // ── theory cell swap ──────────────────────────────────────────────────────
@@ -149,43 +203,49 @@ const GeneratedTimetableTab = ({ session }) => {
     [],
   );
 
-  // ── save ──────────────────────────────────────────────────────────────────
+  // ── save (single action now — always re-validates + rescores) ────────────
   const handleSave = async () => {
-    if (!localGrid) return;
+    if (!localGrid || !activeScheduleData?.timetable_id) return;
     const result = await saveSchedule(
-      session._id,
-      activeScheduleData?.timetable_id,
+      activeScheduleData.timetable_id,
       localGrid,
     );
     if (result.ok) {
+      setSaveWarnings(result.warnings ?? []);
       await fetchActiveSchedule(session._id);
-      setScheduleEditMode(false);
+      if (!result.warnings?.length) setScheduleEditMode(false);
+      // If there ARE warnings, stay in edit mode so the admin sees them
+      // against the grid they just edited, rather than silently exiting.
     }
   };
 
-  const handleSaveAndEvaluate = async () => {
-    if (!localGrid) return;
-    const result = await saveAndEvaluateSchedule(
-      session._id,
-      activeScheduleData?.timetable_id,
-      localGrid,
-      generatedSlotsData,
-    );
-    if (result.ok) {
-      await fetchGeneratedSlots(session._id);
-      await fetchActiveSchedule(session._id);
-      setScheduleEditMode(false);
-    }
-  };
-
-  const handleSlotsUpdated = async () => {
+  const handleSlotsUpdated = useCallback(async () => {
     await fetchGeneratedSlots(session._id);
     setSlotsEditMode(false);
+  }, [fetchGeneratedSlots, session?._id]);
+
+  const handleRefresh = () => {
+    fetchGeneratedSlots(session._id);
+    fetchActiveSchedule(session._id);
+    fetchPendingItems(session._id);
   };
+
+  const handleExportExcel = async () => {
+    if (!activeScheduleData?.generation_id) return;
+    await exportTimetableExcel(activeScheduleData.generation_id, session?.term);
+  };
+
+  const handleReviewResolved = useCallback(() => {
+    // A resolved review item edits the saved grid server-side — refresh
+    // both so Schedule/Institute views reflect it immediately.
+    fetchActiveSchedule(session._id);
+    fetchGeneratedSlots(session._id);
+  }, [fetchActiveSchedule, fetchGeneratedSlots, session?._id]);
 
   const isLoading = isFetchingSlots || isFetchingSchedule;
   const hasData = generatedSlotsData || activeScheduleData;
   const score = generatedSlotsData?.score ?? activeScheduleData?.score;
+  const pendingReviewCount = reviewItems.length;
 
   const displayScheduleData = useMemo(() => {
     if (!activeScheduleData) return null;
@@ -193,6 +253,74 @@ const GeneratedTimetableTab = ({ session }) => {
       ? { ...activeScheduleData, grid: localGrid }
       : activeScheduleData;
   }, [activeScheduleData, localGrid]);
+
+  // ── which panel (and empty-state message) belongs to the active tab ────────
+  const panel = useMemo(() => {
+    if (activeTab === "schedule") {
+      return displayScheduleData
+        ? {
+            node: (
+              <DualTrackScheduleView
+                scheduleData={displayScheduleData}
+                slotsData={generatedSlotsData}
+                editMode={scheduleEditMode}
+                onSwapCells={handleSwapCells}
+                onLabSwap={handleLabSwap}
+                onCellChange={handleCellChange}
+              />
+            ),
+          }
+        : { empty: "Schedule data unavailable." };
+    }
+    if (activeTab === "slots") {
+      return generatedSlotsData
+        ? {
+            node: (
+              <EditableSlotsView
+                ref={slotsViewRef}
+                slotsData={generatedSlotsData}
+                editMode={slotsEditMode}
+                sessionId={session._id}
+                onSlotsUpdated={handleSlotsUpdated}
+              />
+            ),
+          }
+        : { empty: "Slot data unavailable." };
+    }
+    if (activeTab === "review") {
+      return {
+        node: (
+          <ManualReviewPanel
+            session={session}
+            onResolved={handleReviewResolved}
+          />
+        ),
+      };
+    }
+    // institute
+    return displayScheduleData && generatedSlotsData
+      ? {
+          node: (
+            <InstituteView
+              scheduleData={displayScheduleData}
+              slotsData={generatedSlotsData}
+            />
+          ),
+        }
+      : { empty: "Both slots and schedule data are needed." };
+  }, [
+    activeTab,
+    displayScheduleData,
+    generatedSlotsData,
+    scheduleEditMode,
+    slotsEditMode,
+    session,
+    handleSwapCells,
+    handleLabSwap,
+    handleCellChange,
+    handleSlotsUpdated,
+    handleReviewResolved,
+  ]);
 
   if (isLoading)
     return (
@@ -218,35 +346,17 @@ const GeneratedTimetableTab = ({ session }) => {
       </div>
     );
 
-  const handleExportExcel = async () => {
-    if (!activeScheduleData?.generation_id) return;
-    await exportTimetableExcel(activeScheduleData.generation_id, session?.term);
-  };
-
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-gray-800 dark:to-gray-800/50 rounded-xl p-4 border border-emerald-100 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-1">
-            Generated Timetable
-          </p>
-          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-            {session?.term} Term · {generatedSlotsData?.slots?.length ?? 0}{" "}
-            slots
-            {(activeScheduleData?.track2_batches?.length ?? 0) > 0 && (
-              <span className="ml-2 text-xs font-normal text-purple-500 dark:text-purple-400">
-                · {activeScheduleData.track2_batches.length} batch
-                {activeScheduleData.track2_batches.length !== 1 ? "es" : ""} on
-                Track 2
-              </span>
-            )}
-          </h3>
-        </div>
-        <div className="flex items-center gap-2">
+      {/* Header — session name on the left, score + actions on the right */}
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+          {session?.term} Term
+        </h3>
+
+        <div className="flex items-center gap-1.5">
           {score != null && <ScoreBadge score={score} />}
 
-          {/* Edit button — hidden when toolbar is already showing */}
           {(activeTab === "schedule" || activeTab === "slots") && !editMode && (
             <button
               onClick={handleEditToggle}
@@ -261,114 +371,115 @@ const GeneratedTimetableTab = ({ session }) => {
             onClick={handleExportExcel}
             disabled={!activeScheduleData?.generation_id}
             title="Export to Excel"
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-700 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="p-1.5 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-700 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            <FileSpreadsheet size={12} />
-            Export
+            <FileSpreadsheet size={14} />
           </button>
 
           <button
-            onClick={() => {
-              fetchGeneratedSlots(session._id);
-              fetchActiveSchedule(session._id);
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            onClick={handleRefresh}
+            title="Refresh"
+            className="p-1.5 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
           >
-            <RefreshCw size={12} />
+            <RefreshCw size={14} />
           </button>
         </div>
       </div>
 
-      {/* Schedule edit toolbar — Cancel / Save / Save+Evaluate */}
+      {/* Schedule edit toolbar — Cancel / Save (always re-validates + rescores) */}
       {activeTab === "schedule" && scheduleEditMode && (
         <EditToolbar
           onCancel={handleCancelScheduleEdit}
           onSave={handleSave}
-          onSaveAndEvaluate={handleSaveAndEvaluate}
           isSaving={isSavingSchedule}
-          isEvaluating={isEvaluatingSchedule}
           saveError={scheduleError}
+          warnings={saveWarnings}
         />
+      )}
+
+      {/* Slots edit toolbar — Cancel / Save */}
+      {activeTab === "slots" && slotsEditMode && (
+        <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800">
+          <div className="flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-300 flex-1 min-w-0">
+            <Info size={11} className="shrink-0" />
+            <span>
+              Drag a course to move it, use + to add one, or the trash icon to
+              remove a slot. Changes are local until you save.
+            </span>
+          </div>
+
+          {slotsError && (
+            <span className="text-[10px] text-red-500 shrink-0">
+              {slotsError}
+            </span>
+          )}
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleCancelSlotsEdit}
+              disabled={isSavingSlots}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
+            >
+              Cancel
+            </button>
+
+            <button
+              onClick={handleSaveSlots}
+              disabled={isSavingSlots}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-500 hover:bg-emerald-600 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isSavingSlots ? (
+                <>
+                  <Loader2 size={11} className="animate-spin" />
+                  Saving…
+                </>
+              ) : (
+                <>
+                  <Save size={11} />
+                  Save
+                </>
+              )}
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Sub-tabs */}
-      <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg w-fit">
-        {[
-          { key: "schedule", label: "Schedule", icon: <Rows3 size={13} /> },
-          { key: "slots", label: "Slots", icon: <LayoutGrid size={13} /> },
-          {
-            key: "institute",
-            label: "Institute",
-            icon: <CalendarDays size={13} />,
-          },
-        ].map(({ key, label, icon }) => (
-          <button
-            key={key}
-            onClick={() => handleTabChange(key)}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-xs font-medium transition-all ${
-              activeTab === key
-                ? "bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 shadow-sm"
-                : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
-            }`}
-          >
-            {icon}
-            {label}
-            {key === "schedule" && scheduleEditMode && (
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 ml-0.5" />
-            )}
-            {key === "slots" && slotsEditMode && (
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 ml-0.5" />
-            )}
-          </button>
-        ))}
+      <div className="flex gap-4 border-b border-gray-100 dark:border-gray-700">
+        {BASE_TABS.map(({ key, label, icon: Icon }) => {
+          const isActive = activeTab === key;
+          const isDirty =
+            (key === "schedule" && scheduleEditMode) ||
+            (key === "slots" && slotsEditMode);
+          return (
+            <button
+              key={key}
+              onClick={() => handleTabChange(key)}
+              className={`flex items-center gap-1.5 pb-2 text-xs font-medium border-b-2 -mb-px transition-colors ${
+                isActive
+                  ? "border-emerald-500 text-gray-800 dark:text-gray-100"
+                  : "border-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              }`}
+            >
+              <Icon size={13} />
+              {label}
+              {key === "review" && pendingReviewCount > 0 && (
+                <span className="flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-amber-500 text-white text-[9px] font-bold leading-none">
+                  {pendingReviewCount}
+                </span>
+              )}
+              {isDirty && (
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* Tab content */}
-      {activeTab === "schedule" && displayScheduleData && (
-        <DualTrackScheduleView
-          scheduleData={displayScheduleData}
-          slotsData={generatedSlotsData}
-          editMode={scheduleEditMode}
-          onSwapCells={handleSwapCells}
-          onLabSwap={handleLabSwap}
-          onCellChange={handleCellChange}
-        />
+      {panel.node ?? (
+        <p className="text-sm text-gray-400 text-center py-10">{panel.empty}</p>
       )}
-
-      {activeTab === "slots" && generatedSlotsData && (
-        <EditableSlotsView
-          slotsData={generatedSlotsData}
-          editMode={slotsEditMode}
-          sessionId={session._id}
-          onSlotsUpdated={handleSlotsUpdated}
-        />
-      )}
-
-      {activeTab === "institute" &&
-        displayScheduleData &&
-        generatedSlotsData && (
-          <InstituteView
-            scheduleData={displayScheduleData}
-            slotsData={generatedSlotsData}
-          />
-        )}
-
-      {activeTab === "schedule" && !displayScheduleData && (
-        <p className="text-sm text-gray-400 text-center py-10">
-          Schedule data unavailable.
-        </p>
-      )}
-      {activeTab === "slots" && !generatedSlotsData && (
-        <p className="text-sm text-gray-400 text-center py-10">
-          Slot data unavailable.
-        </p>
-      )}
-      {activeTab === "institute" &&
-        (!displayScheduleData || !generatedSlotsData) && (
-          <p className="text-sm text-gray-400 text-center py-10">
-            Both slots and schedule data are needed.
-          </p>
-        )}
     </div>
   );
 };

@@ -26,7 +26,6 @@ const courseAssignmentSchema = new mongoose.Schema(
       required: true,
     },
 
-    // 🔥 support single + combined batches
     batch_ids: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -35,35 +34,29 @@ const courseAssignmentSchema = new mongoose.Schema(
       },
     ],
 
-    // regular / backlog / minor / OE
     assignment_type: {
       type: String,
       enum: ["regular", "backlog", "minor", "oe"],
       default: "regular",
     },
 
-    // number of sessions per week (override credits)
     sessions_per_week: {
       type: Number,
     },
 
-    // duration in hours (1 for lecture, 3 for lab)
     duration: {
       type: Number,
       default: 1,
     },
 
-    // lecture / lab / tutorial
     component_type: {
       type: String,
       enum: ["lecture", "lab", "tutorial"],
       default: "lecture",
     },
 
-    // 🔥 NEW: other courses (lab component) that share the SAME physical lab room
-    // as this assignment's course. Engine should never place these on the same
-    // day, or the same track-slot, for the given session.
-    // Only meaningful when component_type === "lab".
+    // No room_id anywhere (decision #1) — this only governs whether two
+    // lab entries are ALLOWED to occupy the same lab block together.
     shared_lab_with: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -71,9 +64,6 @@ const courseAssignmentSchema = new mongoose.Schema(
       },
     ],
 
-    // 🔥 NEW: other CourseAssignment docs that must be scheduled in the
-    // exact same slot as this one (admin-forced sync, independent of batches).
-    // Symmetric — if A.synced_with includes B, B.synced_with should include A.
     synced_with: [
       {
         type: mongoose.Schema.Types.ObjectId,

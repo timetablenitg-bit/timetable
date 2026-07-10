@@ -1,11 +1,10 @@
 // DualTrackScheduleView.jsx
-// Edit mode additions vs original:
-//   • Lab blocks are now draggable (swap with other lab blocks or theory cells)
+// Edit mode:
+//   • Lab blocks are draggable (swap with other lab blocks or theory cells)
 //   • Clicking an empty theory cell opens a slot picker
-//   • Clicking an occupied cell (non-BREAK) still toggles lock (removed — lock
-//     concept is gone; click now opens picker to reassign or clear)
+//   • Clicking an occupied cell (non-BREAK) opens the picker to reassign or clear
 import React, { useState, useCallback, useRef } from "react";
-import { FlaskConical, Clock, Zap, X } from "lucide-react";
+import { FlaskConical, Clock, Zap, X, GripVertical } from "lucide-react";
 import {
   DAYS,
   TIME_LABELS,
@@ -15,14 +14,12 @@ import {
   AM_LAB_BLOCK,
   PM_LAB_BLOCK,
 } from "./constants";
-import { SLOT_COLORS, LAB_COLOR } from "./colors";
 import { getLabBlock } from "./helpers";
 import SlotPill from "./SlotPill";
 import LabMergedCell from "./LabMergedCell";
 
 // ── SlotPickerPopover ─────────────────────────────────────────────────────────
 // Small popover shown when clicking a cell in edit mode.
-// Shows all available slot names (from slotsData) + "clear" option.
 
 const SlotPickerPopover = ({
   slotNames,
@@ -31,7 +28,6 @@ const SlotPickerPopover = ({
   onClose,
   anchorRef,
 }) => {
-  // Position near anchor
   const style = anchorRef?.current
     ? (() => {
         const r = anchorRef.current.getBoundingClientRect();
@@ -46,67 +42,55 @@ const SlotPickerPopover = ({
 
   return (
     <>
-      {/* backdrop */}
       <div className="fixed inset-0 z-[9998]" onClick={onClose} />
       <div
         style={style}
-        className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl p-3 w-56"
+        className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 shadow-lg p-3 w-56"
       >
         <div className="flex items-center justify-between mb-2">
-          <span className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+          <span className="text-[12px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">
             Assign slot
           </span>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
+            className="text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400"
           >
             <X size={12} />
           </button>
         </div>
 
         {slotNames.length > 0 && (
-          <>
-            <p className="text-[9px] text-gray-400 mb-1.5">Theory slots</p>
-            <div className="flex flex-wrap gap-1 mb-2">
-              {slotNames.map((name) => {
-                const color =
-                  SLOT_COLORS[name] ??
-                  "border-gray-200 bg-gray-50 text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300";
-                return (
-                  <button
-                    key={name}
-                    onClick={() => onPick(name, "lecture")}
-                    className={`px-2 py-1 rounded-md border text-[11px] font-bold transition-colors hover:opacity-80 ${color}`}
-                  >
-                    {name}
-                  </button>
-                );
-              })}
-            </div>
-          </>
+          <div className="flex flex-wrap gap-1 mb-2">
+            {slotNames.map((name) => (
+              <button
+                key={name}
+                onClick={() => onPick(name, "lecture")}
+                className="px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700 text-[13px] font-medium text-gray-600 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600 transition-colors"
+              >
+                {name}
+              </button>
+            ))}
+          </div>
         )}
 
         {labSlotNames.length > 0 && (
-          <>
-            <p className="text-[9px] text-gray-400 mb-1.5">Lab slots</p>
-            <div className="flex flex-wrap gap-1 mb-2">
-              {labSlotNames.map((name) => (
-                <button
-                  key={name}
-                  onClick={() => onPick(name, "lab")}
-                  className="px-2 py-1 rounded-md border border-purple-200 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/20 text-purple-800 dark:text-purple-300 text-[11px] font-bold transition-colors hover:opacity-80 flex items-center gap-1"
-                >
-                  <FlaskConical size={9} />
-                  {name}
-                </button>
-              ))}
-            </div>
-          </>
+          <div className="flex flex-wrap gap-1 mb-2">
+            {labSlotNames.map((name) => (
+              <button
+                key={name}
+                onClick={() => onPick(name, "lab")}
+                className="px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700 text-[13px] font-medium text-gray-600 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600 transition-colors flex items-center gap-1"
+              >
+                <FlaskConical size={11} className="text-gray-400" />
+                {name}
+              </button>
+            ))}
+          </div>
         )}
 
         <button
           onClick={() => onPick(null, "free")}
-          className="w-full text-[11px] px-2 py-1 rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:opacity-80 transition-colors"
+          className="w-full text-[13px] px-2 py-1 rounded-md text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
         >
           Clear cell
         </button>
@@ -127,14 +111,13 @@ const DualTrackScheduleView = ({
 }) => {
   const [dragSrc, setDragSrc] = useState(null);
   const [dragOver, setDragOver] = useState(null);
-  const [picker, setPicker] = useState(null); // { day, track, pi, anchor }
+  const [picker, setPicker] = useState(null); // { day, track, pi }
   const pickerAnchorRef = useRef(null);
 
   const { grid, meta, generated_at } = scheduleData;
   const cellKey = (day, track, pi) => `${day}-${track}-${pi}`;
   const labKey = (day, track) => `LAB-${day}-${track}`;
 
-  // Derive available slot names from slotsData
   const theorySlotNames = slotsData
     ? slotsData.slots
         .filter((s) => s.slot_type !== "lab" && !s.slot_name.startsWith("LAB"))
@@ -193,13 +176,12 @@ const DualTrackScheduleView = ({
 
   const renderTheoryCell = (cell, day, track) => {
     if (!cell) {
-      // Empty cell — still clickable in edit mode to assign
       return (
         <td
           key="empty"
-          className={`border border-gray-100 dark:border-gray-700 px-1 py-1 ${
+          className={`border border-gray-100 dark:border-gray-800 px-1 py-1 ${
             editMode
-              ? "cursor-pointer hover:bg-emerald-50/40 dark:hover:bg-emerald-900/10 transition-colors"
+              ? "cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors"
               : ""
           }`}
           onClick={
@@ -224,9 +206,9 @@ const DualTrackScheduleView = ({
       <td
         key={pi}
         className={[
-          "border border-gray-100 dark:border-gray-700 px-1 py-1 transition-colors",
+          "border border-gray-100 dark:border-gray-800 px-1 py-1 transition-colors",
           editMode && !isBreak ? "cursor-pointer" : "",
-          isOver && editMode ? "bg-emerald-50 dark:bg-emerald-900/20" : "",
+          isOver && editMode ? "bg-gray-100 dark:bg-gray-800/60" : "",
           isDraggingSelf ? "opacity-40" : "",
         ].join(" ")}
         draggable={editMode && !!name && !isBreak}
@@ -273,7 +255,7 @@ const DualTrackScheduleView = ({
 
   const renderLabCell = (
     labName,
-    slotsData,
+    slotsDataArg,
     subLabel,
     day,
     track,
@@ -288,21 +270,18 @@ const DualTrackScheduleView = ({
       return (
         <LabMergedCell
           labName={labName}
-          slotsData={slotsData}
+          slotsData={slotsDataArg}
           subLabel={subLabel}
         />
       );
     }
 
-    // In edit mode, render a draggable td directly (bypassing LabMergedCell's td)
     return (
       <td
         colSpan={colSpan}
         className={[
-          "border border-gray-100 dark:border-gray-700 px-1 py-1 cursor-grab active:cursor-grabbing transition-colors",
-          isLabOver
-            ? "bg-purple-50 dark:bg-purple-900/20"
-            : "bg-purple-50/40 dark:bg-purple-900/10",
+          "group border border-gray-100 dark:border-gray-800 px-1 py-1 cursor-grab active:cursor-grabbing transition-colors",
+          isLabOver ? "bg-gray-100 dark:bg-gray-800/60" : "",
           isDraggingSelf ? "opacity-40" : "",
         ].join(" ")}
         draggable
@@ -319,70 +298,47 @@ const DualTrackScheduleView = ({
         }}
         onClick={(e) => handleCellClick(e, day, track, `LAB-${track}`)}
       >
-        <div className="flex flex-col items-center justify-center h-full gap-0.5 py-0.5">
-          <div className="flex items-center gap-1">
-            <FlaskConical
-              size={10}
-              className="text-purple-500 dark:text-purple-400"
-            />
-            <span className="text-[11px] font-bold text-purple-700 dark:text-purple-300">
-              {labName ?? "LAB"}
-            </span>
-          </div>
-          <span className="text-[9px] text-purple-400 dark:text-purple-500">
-            {subLabel}
+        <div className="flex items-center justify-center gap-1.5 h-full py-1.5 rounded-md bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50">
+          <FlaskConical
+            size={13}
+            className="text-indigo-400 dark:text-indigo-500"
+          />
+          <span className="text-[13px] font-semibold text-gray-700 dark:text-gray-200">
+            LAB
           </span>
-          <span className="text-[8px] text-purple-300 dark:text-purple-600 italic mt-0.5">
-            drag to swap
-          </span>
+          <GripVertical
+            size={12}
+            className="text-gray-300 dark:text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity"
+          />
         </div>
       </td>
     );
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Meta */}
-      <div className="flex flex-wrap items-center gap-3 text-xs text-gray-400">
-        {generated_at && (
-          <span className="flex items-center gap-1.5">
-            <Clock size={12} />
-            Generated {new Date(generated_at).toLocaleString()}
-          </span>
-        )}
-        {meta?.total_attempts && (
-          <span className="flex items-center gap-1.5">
-            <Zap size={12} />
-            {meta.total_attempts} attempt{meta.total_attempts !== 1 ? "s" : ""}
-          </span>
-        )}
-        {meta?.generation_time_ms && (
-          <span className="flex items-center gap-1.5">
-            <Clock size={12} />
-            {meta.generation_time_ms}ms
-          </span>
-        )}
-      </div>
-
-      {/* Legend */}
-      <div className="flex flex-wrap gap-2">
-        <span className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs border border-indigo-100 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300">
-          <span className="w-2 h-2 rounded-sm bg-indigo-200 dark:bg-indigo-700 block" />
-          Track 1 — standard (theory AM, lab PM)
-        </span>
-        <span className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs border border-purple-200 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300">
-          <span className="w-2 h-2 rounded-sm bg-purple-200 dark:bg-purple-700 block" />
-          Track 2 — 3-lab batches (lab AM 9–12, theory PM)
-        </span>
-        {editMode && (
-          <span className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs border border-emerald-200 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300">
-            Click any cell to assign · Drag to swap
-          </span>
-        )}
-      </div>
+      {(generated_at || meta?.total_attempts || meta?.generation_time_ms) && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-gray-400 dark:text-gray-500">
+          {generated_at && (
+            <span className="flex items-center gap-1">
+              <Clock size={11} />
+              {new Date(generated_at).toLocaleString()}
+            </span>
+          )}
+          {meta?.total_attempts && (
+            <span className="flex items-center gap-1">
+              <Zap size={11} />
+              {meta.total_attempts} attempt
+              {meta.total_attempts !== 1 ? "s" : ""}
+            </span>
+          )}
+          {meta?.generation_time_ms && <span>{meta.generation_time_ms}ms</span>}
+        </div>
+      )}
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+      <div className="overflow-x-auto rounded-lg border border-gray-100 dark:border-gray-800">
         <table
           className="border-collapse"
           style={{ minWidth: 820, width: "100%", tableLayout: "fixed" }}
@@ -399,16 +355,16 @@ const DualTrackScheduleView = ({
             <col style={{ width: 76 }} />
           </colgroup>
           <thead>
-            <tr className="bg-gray-50 dark:bg-gray-800/80">
-              <th className="border border-gray-100 dark:border-gray-700 px-2 py-2.5 text-left text-[10px] font-semibold text-gray-500 dark:text-gray-400">
+            <tr>
+              <th className="border border-gray-100 dark:border-gray-800 px-2 py-2 text-left text-[12px] font-medium text-gray-400 dark:text-gray-500">
                 Day
               </th>
               {TIME_LABELS.map((t, i) => (
                 <th
                   key={i}
-                  className={`border border-gray-100 dark:border-gray-700 px-1 py-2.5 text-center text-[9px] font-semibold whitespace-nowrap ${
+                  className={`border border-gray-100 dark:border-gray-800 px-1 py-2 text-center text-[13px] font-medium whitespace-nowrap ${
                     i === LUNCH_PI
-                      ? "text-gray-300 dark:text-gray-600"
+                      ? "text-gray-300 dark:text-gray-700"
                       : "text-gray-400 dark:text-gray-500"
                   }`}
                 >
@@ -436,16 +392,20 @@ const DualTrackScheduleView = ({
                 <React.Fragment key={day}>
                   {/* Track 1 */}
                   <tr
-                    className={`${di > 0 ? "border-t-2 border-gray-200 dark:border-gray-700" : ""} hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors`}
+                    className={
+                      di > 0
+                        ? "border-t-2 border-gray-100 dark:border-gray-800"
+                        : ""
+                    }
                   >
                     <td
                       rowSpan={hasDualTrack ? 2 : 1}
-                      className="border border-gray-100 dark:border-gray-700 px-2 py-2 text-xs font-semibold text-gray-600 dark:text-gray-300 bg-gray-50/50 dark:bg-gray-800/40 align-middle"
+                      className="border border-gray-100 dark:border-gray-800 px-2 py-2 text-xs font-medium text-gray-600 dark:text-gray-300 align-middle"
                     >
-                      <div>{day.slice(0, 3)}</div>
+                      {day.slice(0, 3)}
                       {hasDualTrack && (
-                        <div className="text-[9px] font-normal text-indigo-400 dark:text-indigo-500 mt-0.5">
-                          T1↑ T2↓
+                        <div className="text-[13px] font-normal text-gray-300 dark:text-gray-600 mt-0.5">
+                          2 tracks
                         </div>
                       )}
                     </td>
@@ -457,17 +417,10 @@ const DualTrackScheduleView = ({
                     {/* Lunch */}
                     <td
                       rowSpan={hasDualTrack ? 2 : 1}
-                      className="border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-center align-middle px-0.5 py-1"
+                      className="border border-gray-100 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-800/30 text-center align-middle px-0.5"
                     >
-                      <span
-                        className="text-[9px] text-gray-300 dark:text-gray-600 italic"
-                        style={{
-                          writingMode: "vertical-rl",
-                          transform: "rotate(180deg)",
-                          display: "inline-block",
-                        }}
-                      >
-                        LUNCH
+                      <span className="text-[11px] text-gray-400 dark:text-gray-500 tracking-widest">
+                        L
                       </span>
                     </td>
 
@@ -478,12 +431,9 @@ const DualTrackScheduleView = ({
                         )}
                   </tr>
 
-                  {/* Track 2 */}
+                  {/* Track 2 — subtle accent, no heavy wash */}
                   {hasDualTrack && (
-                    <tr
-                      className="bg-purple-50/30 dark:bg-purple-900/5 hover:bg-purple-50/50 dark:hover:bg-purple-900/10 transition-colors"
-                      style={{ borderTop: "1.5px dashed #c4b5fd" }}
-                    >
+                    <tr className="border-t border-dashed border-gray-200 dark:border-gray-700">
                       {renderLabCell(t2AmLab, slotsData, "9:00–12:00", day, 2)}
                       {renderTheoryCell(t2Map[3], day, 2)}
                       {AFTER_LUNCH.map((pi) =>
@@ -496,24 +446,6 @@ const DualTrackScheduleView = ({
             })}
           </tbody>
         </table>
-      </div>
-
-      {/* Slot colour legend */}
-      <div className="flex flex-wrap gap-2 pt-1">
-        {Object.entries(SLOT_COLORS).map(([name, color]) => (
-          <span
-            key={name}
-            className={`flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-medium ${color}`}
-          >
-            <span className="font-bold">{name}</span>
-            {name === "G" && <span className="opacity-60">Minor</span>}
-            {name === "H" && <span className="opacity-60">OE</span>}
-          </span>
-        ))}
-        <span className="flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-medium border-purple-200 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/20 text-purple-800 dark:text-purple-300">
-          <FlaskConical size={9} />
-          Lab
-        </span>
       </div>
 
       {/* Slot picker popover */}

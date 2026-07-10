@@ -40,34 +40,46 @@ export const getLabCoursePoolForRow = (row, courses) => {
 export const getSyncCandidatesForRow = (row, allAssignments, batchId) => {
   if (!row.assignmentId) return [];
 
-  return (allAssignments ?? [])
-    .filter((a) => a._id?.toString() !== row.assignmentId?.toString())
-    .filter(
-      (a) =>
-        !(a.batch_ids ?? []).some(
-          (b) => (b?._id ?? b)?.toString() === batchId?.toString(),
-        ),
-    )
-    .map((a) => {
-      const courseCode = a.course_id?.course_code ?? "";
-      const courseName = a.course_id?.course_name ?? "";
-      const courseLabel =
-        courseCode && courseName
-          ? `${courseCode} — ${courseName}`
-          : courseCode || courseName || "Course";
-      const batchLabel = (a.batch_ids ?? [])
-        .map((b) => b.batch_name)
-        .join(", ");
-      const facultyId = (a.faculty_id?._id ?? a.faculty_id)?.toString();
-      return {
-        _id: a._id,
-        label: `${courseLabel} · ${batchLabel}`,
-        // 🔍 kept separately too, so the picker can search them independently
-        course_code: courseCode,
-        course_name: courseName,
-        facultyId,
-      };
-    });
+  return (
+    (allAssignments ?? [])
+      .filter((a) => a._id?.toString() !== row.assignmentId?.toString())
+      .filter(
+        (a) =>
+          !(a.batch_ids ?? []).some(
+            (b) => (b?._id ?? b)?.toString() === batchId?.toString(),
+          ),
+      )
+      // 🚫 slot sync is for lecture/tutorial-style sessions sharing a slot
+      // across batches — lab sessions use shared_lab_with instead, so keep
+      // them out. component_type lives on the ASSIGNMENT ("lecture"/"lab"/
+      // "tutorial", lowercase) — not course_type on Course ("THEORY"/"LAB").
+      .filter((a) => a.component_type !== "lab")
+      .map((a) => {
+        const courseCode = a.course_id?.course_code ?? "";
+        const courseName = a.course_id?.course_name ?? "";
+        const courseLabel =
+          courseCode && courseName
+            ? `${courseCode} — ${courseName}`
+            : courseCode || courseName || "Course";
+        const batchLabel = (a.batch_ids ?? [])
+          .map((b) => b.batch_name)
+          .join(", ");
+        const facultyId = (a.faculty_id?._id ?? a.faculty_id)?.toString();
+        // 🔍 adjust `.name` if your Faculty schema uses a different field
+        // (e.g. `full_name`, or `first_name`/`last_name` to join instead)
+        const facultyName = a.faculty_id?.name ?? "";
+        return {
+          _id: a._id,
+          label: facultyName
+            ? `${courseLabel} · ${batchLabel} · ${facultyName}`
+            : `${courseLabel} · ${batchLabel}`,
+          course_code: courseCode,
+          course_name: courseName,
+          facultyId,
+          facultyName,
+        };
+      })
+  );
 };
 
 // Builds the API payload for a single row. Shared by the save hook (bulk
@@ -75,6 +87,11 @@ export const getSyncCandidatesForRow = (row, allAssignments, batchId) => {
 // synced_with links, which can touch rows in batches that aren't open).
 // For slot rows: course_id = actual elective, elective_slot_id = slot._id
 // For normal rows: course_id = course._id, elective_slot_id = null
+//
+// shared_lab_with now holds ASSIGNMENT ids (specific batch lab sessions),
+// not course ids — see getLabAssignmentPoolForRow above. No change needed
+// here since we just pass the array through as-is.
+//
 // Returns null if the row isn't complete enough to save yet.
 export const buildRowPayload = (row, batchId, sessionId) => {
   const isSlot = row.course?.is_elective_slot;

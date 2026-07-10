@@ -1,5 +1,3 @@
-// models/generatedSlotModel.js
-// Stores the slot groups (A, B, C...) from one generation run
 import mongoose from "mongoose";
 
 const slotEntrySchema = new mongoose.Schema(
@@ -33,7 +31,7 @@ const generatedSlotSchema = new mongoose.Schema(
     // Groups ALL slots from one generation run together
     generation_id: { type: mongoose.Schema.Types.ObjectId, required: true },
 
-    slot_name: { type: String, required: true }, // "A", "B", "G", "H", "LAB1"
+    slot_name: { type: String, required: true }, // "A", "B", "G", "H", "LAB_MONDAY"
 
     slot_type: {
       type: String,

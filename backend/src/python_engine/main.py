@@ -1,38 +1,33 @@
 """
-main.py
+main.py  –  v2
+=================
+"rework" mode is gone. Rework is now a Node-only, no-subprocess path
+(admin hand-edits the grid, Node persists + rescoring calls scorer.py
+logic directly or via a one-off invocation with mode="evaluate" — see
+controllers/scheduleEditController.js). rework_engine.py has been
+deleted.
 """
+
 import sys
 import json
-from engine  import run
-from scorer  import score_timetable
+
+from engine import run
+from scorer import score_timetable
+
 
 def main():
     try:
         data = json.load(sys.stdin)
 
-        if isinstance(data, dict):
-            mode = data.get("mode")
+        if isinstance(data, dict) and data.get("mode") == "evaluate":
+            timetable = data["timetable"]
+            slots = data.get("slots")
+            score = score_timetable(timetable, slots)
+            print(json.dumps({"score": score}))
+            return
 
-            if mode == "evaluate":
-                timetable = data["timetable"]
-                slots     = data["slots"]
-                score     = score_timetable(timetable, slots)
-                print(json.dumps({"score": score, "violations": []}))
-                return
-
-            # "rework" mode is deprecated with fixed structure –
-            # re-run full generation instead.
-            if mode == "rework":
-                print(
-                    json.dumps({
-                        "error": "rework mode is not supported with the fixed-structure engine. "
-                                 "Submit assignments list for a fresh generation."
-                    }),
-                    file=sys.stderr,
-                )
-                sys.exit(1)
-
-        # Default: full generation from assignments list
+        # Default: full generation from the payload Node built
+        # (assignments + derived skeleton data — see engine.py docstring).
         result = run(data)
         print(json.dumps(result))
 

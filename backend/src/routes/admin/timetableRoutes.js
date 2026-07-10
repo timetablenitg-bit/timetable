@@ -1,47 +1,64 @@
-// timetableRoutes.js
+// routes/timetableRoutes.js
 import express from "express";
+
 import {
   generateTimetable,
-  evaluateTimetable,
-  getGeneratedSlots,
   getActiveSchedule,
-  reworkTimetable,
+  getGeneratedSlots,
 } from "../../controllers/admin/timetableController.js";
+
+import { saveAndEvaluateSchedule } from "../../controllers/admin/scheduleEditController.js";
+import { setBatchTrack } from "../../controllers/admin/trackController.js";
+
+import {
+  getSkeleton,
+  createOrUpdateSkeleton,
+  activateSkeleton,
+} from "../../controllers/admin/skeletonController.js";
+
+import {
+  getPendingReviewItems,
+  resolveOverflowItem,
+  resolveChooseOccurrencesItem,
+} from "../../controllers/admin/manualReviewController.js";
+
 import {
   bulkUpdateSlots,
+  patchSlot,
   createSlot,
   deleteSlot,
-  patchSlot,
-} from "../../controllers/admin/slotController.js";
-import {
-  saveAndEvaluate,
-  saveScheduleGrid,
-} from "../../controllers/admin/scheduleController.js";
+} from "../../controllers/admin/slotEditController.js";
 
 const router = express.Router();
 
-router.get("/generate", generateTimetable);
-router.post("/evaluate", evaluateTimetable);
-router.get("/slots", getGeneratedSlots); // ← new
-router.get("/schedule", getActiveSchedule); // ← new
-router.post("/rework", reworkTimetable); // ← new
+// Skeleton
+router.get("/skeleton", getSkeleton);
+router.post("/skeleton", createOrUpdateSkeleton);
+router.patch("/skeleton/:id/activate", activateSkeleton);
 
-// Bulk replace all (non-LAB) slots for a session
+// Generation + reads
+router.post("/generate", generateTimetable);
+router.get("/schedule", getActiveSchedule);
+router.get("/slots", getGeneratedSlots);
+
+// Rework (manual grid edit + rescore, no engine spawn)
+router.post("/schedule/:timetable_id/save", saveAndEvaluateSchedule);
+
+// Track toggle (post-hoc, per-day-per-batch, no regeneration)
+router.patch("/schedule/:id/track", setBatchTrack);
+
+// Manual review queue
+router.get("/manual-review", getPendingReviewItems);
+router.patch("/manual-review/:item_id/overflow", resolveOverflowItem);
+router.patch(
+  "/manual-review/:item_id/choose-occurrences",
+  resolveChooseOccurrencesItem,
+);
+
+// Slot editing (unchanged)
 router.put("/slots/:session_id", bulkUpdateSlots);
-
-// Create a new slot
-router.post("/slots/:session_id", createSlot);
-
-// Patch a single slot (rename, update entries, change type)
 router.patch("/slots/:session_id/:slot_name", patchSlot);
-
-// Delete a single slot
+router.post("/slots/:session_id", createSlot);
 router.delete("/slots/:session_id/:slot_name", deleteSlot);
-
-// Save grid only (no re-scoring)
-router.put("/schedule/:timetable_id", saveScheduleGrid);
-
-// Save grid + re-evaluate score
-router.post("/schedule/:timetable_id/evaluate", saveAndEvaluate);
 
 export default router;

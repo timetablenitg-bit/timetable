@@ -1,118 +1,138 @@
 """
-timetable_generator.py  –  New approach
-=========================================
-Now expects lab slots as arrays: LAB_MONDAY, LAB_TUESDAY, LAB_THURSDAY.
-For each lab block (Monday T1 PM, Monday T2 AM, etc.), it picks the first
-available lab from the corresponding day's array (or rotates if needed).
+timetable_generator.py  –  v2
+================================
+No more hardcoded TEMPLATE dict. The skeleton (list of
+{day, track, period_index, time_label, slot_label} cells) comes from the
+active TimetableSkeleton document, passed in through the engine payload
+Node builds. This is the same skeleton getSlotOccurrenceCount /
+getAdjacencyMap were derived from, so what gets stamped here is always
+consistent with what slot_generator.py placed against.
+
+"LAB" placeholder cells resolve to the concrete LAB_<DAY> slot name built
+by slot_generator.py's lab pass (e.g. "LAB_MONDAY"), so the frontend can
+identify which lab block a cell belongs to.
 """
 
-import sys
+from collections import defaultdict
 
-DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
-TIME_LABELS = {
-    0: "9:00-9:55", 1: "10:00-10:55", 2: "11:00-11:55", 3: "12:00-12:55",
-    4: "LUNCH", 5: "14:00-14:55", 6: "15:00-15:55", 7: "16:00-16:55",
-}
+LAB_LABEL = "LAB"
 
-TEMPLATE = {
-    ("Monday", 1): [(0,"A"),(1,"B"),(2,"C"),(3,"D"),(4,"BREAK"),(5,"LAB"),(6,"LAB"),(7,"LAB")],
-    ("Monday", 2): [(0,"A"),(1,"LAB"),(2,"LAB"),(3,"LAB"),(4,"BREAK"),(5,"B"),(6,"C"),(7,"D")],
-    ("Tuesday",1): [(0,"E"),(1,"F"),(2,"A"),(3,"G"),(4,"BREAK"),(5,"LAB"),(6,"LAB"),(7,"LAB")],
-    ("Tuesday",2): [(0,"LAB"),(1,"LAB"),(2,"LAB"),(3,"G"),(4,"BREAK"),(5,"E"),(6,"F"),(7,"A")],
-    ("Wednesday",1): [(0,"B"),(1,"C"),(2,"D"),(3,"E"),(4,"BREAK"),(5,"G"),(6,"H"),(7,"TUT")],
-    ("Wednesday",2): [(0,None),(1,None),(2,None),(3,None),(4,"BREAK"),(5,None),(6,None),(7,None)],
-    ("Thursday",1): [(0,"F"),(1,"A"),(2,"B"),(3,"H"),(4,"BREAK"),(5,"LAB"),(6,"LAB"),(7,"LAB")],
-    ("Thursday",2): [(0,None),(1,None),(2,None),(3,None),(4,"BREAK"),(5,None),(6,None),(7,None)],
-    ("Friday",1): [(0,"C"),(1,"D"),(2,"E"),(3,"F"),(4,"BREAK"),(5,"G"),(6,"H"),(7,"1-CREDIT")],
-    ("Friday",2): [(0,None),(1,None),(2,None),(3,None),(4,"BREAK"),(5,None),(6,None),(7,None)],
-}
 
-LAB_SLOT_NAMES = {
-    "Monday":   "LAB_MONDAY",
-    "Tuesday":  "LAB_TUESDAY",
-    "Thursday": "LAB_THURSDAY",
-}
-
-def _slot_type(name):
-    if name is None: return "free"
-    if name == "BREAK": return "break"
-    if name and name.startswith("LAB_"): return "lab"
-    if name == "G": return "minor"
-    if name == "H": return "oe"
-    if name == "TUT": return "tutorial"
-    if name == "1-CREDIT": return "1credit"
+def _slot_type(label):
+    if label is None:
+        return "free"
+    if label in ("BREAK", "LUNCH"):
+        return "break"
+    if label.startswith("LAB"):
+        return "lab"
+    if label == "G":
+        return "minor"
+    if label == "H":
+        return "oe"
+    if label == "TUT":
+        return "tutorial"
+    if label == "1-CREDIT":
+        return "lecture"   # or "tutorial", depending on your curriculum's convention
     return "lecture"
 
-def _build_day_track(template_row, day_lab_entries, track, day_lab_slot_name=None):
-    """
-    day_lab_entries: list of lab entry dicts for that day (from LAB_MONDAY etc.)
-    day_lab_slot_name: the slot name string e.g. "LAB_MONDAY" — stamped into all
-                       LAB placeholder cells so the frontend can identify the block.
-    """
-    resolved = {}
 
-    for (pidx, placeholder) in template_row:
-        if placeholder == "LAB":
-            if day_lab_entries and day_lab_slot_name:
-                resolved[pidx] = day_lab_slot_name  # e.g. "LAB_MONDAY"
-            else:
-                resolved[pidx] = None   # no lab assigned
-        else:
-            resolved[pidx] = placeholder
+def _resolve_cell_name(label, day):
+    """Map a skeleton placeholder label to the concrete slot name that
+    should be stamped into the grid for this cell."""
+    if label == LAB_LABEL:
+        return f"LAB_{day.upper()}"
+    return label
 
-    AM_LAB_BLOCK = {1, 2, 3}
-    PM_LAB_BLOCK = {5}
-    cells = []
-    for i in range(8):
-        name = resolved.get(i)
-        stype = _slot_type(name)
-        is_anchor = False
-        if name and name.startswith("LAB_"):
-            if track == 1 and i in PM_LAB_BLOCK: is_anchor = True
-            if track == 2 and i in AM_LAB_BLOCK: is_anchor = True
-        cells.append({
-            "period_index": i,
-            "time_label":   TIME_LABELS[i],
-            "slot_name":    name,
-            "slot_type":    stype,
-            "track":        track,
-            "is_lab_anchor": is_anchor,
-        })
-    return cells
 
-def generate_timetable(slots, **_kwargs):
+def generate_timetable(skeleton_cells, lab_entries_by_day):
     """
-    slots: output of slot_generator.build_slots()
-    Now expects slots["LAB_MONDAY"] = [entry1, entry2, ...]
+    skeleton_cells: flat list of skeleton cell dicts (see module docstring).
+    lab_entries_by_day: { "Monday": [...], "Tuesday": [...], "Thursday": [...] }
+                         — whether or not each day actually has any lab
+                         entries determines if the LAB placeholder resolves
+                         to a real slot name or stays empty.
+
+    Returns { day: { "track1": [...cells], "track2": [...cells] | None } }
     """
-    # Extract lab arrays
-    lab_entries = {
-        "Monday":   slots.get("LAB_MONDAY",   []),
-        "Tuesday":  slots.get("LAB_TUESDAY",  []),
-        "Thursday": slots.get("LAB_THURSDAY", []),
-    }
+    by_day_track = defaultdict(list)
+    for cell in skeleton_cells:
+        by_day_track[(cell["day"], cell["track"])].append(cell)
+
+    days = sorted({c["day"] for c in skeleton_cells},
+                  key=lambda d: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].index(d))
 
     result = {}
-    for day in DAYS:
-        t1_template = TEMPLATE[(day, 1)]
-        t2_template = TEMPLATE[(day, 2)]
-        day_lab_slot_name = LAB_SLOT_NAMES.get(day)
-
-        t1_cells = _build_day_track(
-            t1_template,
-            lab_entries.get(day, []),
-            track=1,
-            day_lab_slot_name=day_lab_slot_name,
+    for day in days:
+        track1_cells = sorted(
+            by_day_track.get((day, 1), []), key=lambda c: c["period_index"]
+        )
+        track2_cells = sorted(
+            by_day_track.get((day, 2), []), key=lambda c: c["period_index"]
         )
 
-        needs_track2 = bool(lab_entries.get(day, [])) or day in ["Monday", "Tuesday", "Thursday"]
-        t2_cells = _build_day_track(
-            t2_template,
-            lab_entries.get(day, []),
-            track=2,
-            day_lab_slot_name=day_lab_slot_name,
-        ) if needs_track2 else None
+        has_labs_today = bool(lab_entries_by_day.get(day))
 
-        result[day] = {"track1": t1_cells, "track2": t2_cells}
+        def build(cells, track):
+            out = []
+            for c in cells:
+                label = c.get("slot_label")
+                if label == LAB_LABEL and not has_labs_today:
+                    # skeleton has a lab placeholder but nothing got
+                    # placed there this run -> leave the cell empty
+                    # rather than stamping a phantom lab block.
+                    resolved_name = None
+                else:
+                    resolved_name = _resolve_cell_name(label, day)
+
+                out.append({
+                    "period_index": c["period_index"],
+                    "time_label": c.get("time_label", ""),
+                    "slot_name": resolved_name,
+                    "slot_type": _slot_type(resolved_name),
+                    "track": track,
+                    "is_lab_anchor": bool(resolved_name and resolved_name.startswith("LAB")),
+                })
+            return out
+
+        result[day] = {
+            "track1": build(track1_cells, 1),
+            "track2": build(track2_cells, 2) if track2_cells else None,
+        }
 
     return result
+
+
+def suggest_track_assignments(lab_entries_by_day):
+    """
+    Suggestion-only helper (decision #6) — balances which batches would
+    sit on track 1 vs track 2 for each lab day, purely as a starting
+    point for the admin. NEVER auto-applied; the caller returns this as
+    result["suggested_track_assignments"] and the admin accepts/edits it
+    via PATCH .../schedule/:id/track.
+
+    Simple heuristic: split each day's lab batches roughly in half by
+    order of appearance, alternating which half is "track 2" per lab
+    entry so AM/PM lab load balances out.
+    """
+    suggestions = []
+    for day, entries in lab_entries_by_day.items():
+        all_batch_ids = []
+        for e in entries:
+            all_batch_ids.extend(e.get("batch_ids", []))
+        # de-dupe preserving order
+        seen = set()
+        ordered = []
+        for b in all_batch_ids:
+            if b not in seen:
+                seen.add(b)
+                ordered.append(b)
+
+        for i, batch_id in enumerate(ordered):
+            track = 2 if i % 2 == 1 else 1
+            suggestions.append({
+                "day": day,
+                "batch_id": batch_id,
+                "track": track,
+            })
+
+    return suggestions

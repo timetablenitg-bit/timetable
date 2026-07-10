@@ -31,6 +31,13 @@ const useAdminStore = create((set, get) => ({
   timetableData: null, // { slots, timetable, score }
   evaluationScore: null, // only for evaluation mode (drag‑drop)
 
+  isFetchingSkeleton: false,
+  isSavingSkeleton: false,
+  skeletonData: null,
+  skeletonError: null,
+
+  isSavingTrack: false,
+
   // ====================== Generic Helpers ======================
   setLoading: (value) => set({ isLoading: value }),
   setSaving: (value) => set({ isSaving: value }),
@@ -641,14 +648,18 @@ const useAdminStore = create((set, get) => ({
     set({ isGeneratingTimetable: true, error: null, timetableData: null });
 
     try {
-      const response = await axiosInstance.get(API_PATHS.TIMETABLE.GENERATE, {
-        params: { session_id },
-      });
+      const response = await axiosInstance.post(
+        API_PATHS.TIMETABLE.GENERATE,
+        {},
+        { params: { session_id } },
+      );
 
       set({
-        timetableData: response.data.data, // { slots, timetable, score }
+        timetableData: response.data.data, // { slots, timetable, score, manual_review_count, suggested_track_assignments, meta }
         isGeneratingTimetable: false,
       });
+
+      return { success: true, data: response.data.data };
     } catch (error) {
       const message =
         error.response?.data?.message || "Failed to generate timetable";
@@ -656,27 +667,7 @@ const useAdminStore = create((set, get) => ({
         error: message,
         isGeneratingTimetable: false,
       });
-      throw new Error(message); // ← add this
-    }
-  },
-
-  evaluateTimetable: async (timetable) => {
-    set({ isEvaluatingTimetable: true, error: null, evaluationScore: null });
-
-    try {
-      const response = await axiosInstance.post(API_PATHS.TIMETABLE.EVALUATE, {
-        timetable,
-      });
-
-      set({
-        evaluationScore: response.data.data?.score ?? null,
-        isEvaluatingTimetable: false,
-      });
-    } catch (error) {
-      set({
-        error: error.response?.data?.message || "Failed to evaluate timetable",
-        isEvaluatingTimetable: false,
-      });
+      throw new Error(message);
     }
   },
 
@@ -724,28 +715,10 @@ const useAdminStore = create((set, get) => ({
     }
   },
 
-  reworkTimetable: async ({ timetable_id, timetable, slots, locked_cells }) => {
-    set({ isSaving: true, error: null });
-    try {
-      const response = await axiosInstance.post(
-        API_PATHS.TIMETABLE.REWORK, // add this path to your apiPaths
-        { timetable_id, timetable, slots, locked_cells },
-      );
-      set({ isSaving: false });
-      return { success: true, data: response.data.data };
-    } catch (error) {
-      const message = error.response?.data?.message || "Rework failed";
-      set({ error: message, isSaving: false });
-      return { success: false, message };
-    }
-  },
-
   clearTimetableData: () => {
     set({
       timetableData: null,
-      evaluationScore: null,
       isGeneratingTimetable: false,
-      isEvaluatingTimetable: false,
     });
   },
 
@@ -867,7 +840,6 @@ const useAdminStore = create((set, get) => ({
         API_PATHS.TIMETABLE.BULK_UPDATE(session_id),
         { slots },
       );
-      // Refresh the slots in store with what the server returned
       set({
         generatedSlotsData: {
           ...get().generatedSlotsData,
@@ -893,7 +865,6 @@ const useAdminStore = create((set, get) => ({
         API_PATHS.TIMETABLE.CREATE_SLOT(session_id),
         { slot_name, slot_type, entries },
       );
-      // Append the new slot into the local store
       const prev = get().generatedSlotsData;
       set({
         generatedSlotsData: prev
@@ -908,9 +879,7 @@ const useAdminStore = create((set, get) => ({
       return { ok: false, message };
     }
   },
-
   patchSlot: async (session_id, slot_name, updates) => {
-    // updates: { entries?, slot_name?, slot_type? }
     set({ isSavingSlots: true, slotsError: null });
     try {
       const response = await axiosInstance.patch(
@@ -962,21 +931,24 @@ const useAdminStore = create((set, get) => ({
     }
   },
 
-  saveSchedule: async (session_id, timetable_id, gridObj) => {
+  saveSchedule: async (timetable_id, gridObj) => {
     set({ isSavingSchedule: true, scheduleError: null });
     try {
-      const response = await axiosInstance.put(
+      const response = await axiosInstance.post(
         API_PATHS.TIMETABLE.SAVE_SCHEDULE(timetable_id),
         { grid: gridObj },
       );
-      // Update the active schedule in store
+      const { score, warnings } = response.data.data;
       set((state) => ({
         activeScheduleData: state.activeScheduleData
-          ? { ...state.activeScheduleData, grid: gridObj }
+          ? { ...state.activeScheduleData, grid: gridObj, score }
           : state.activeScheduleData,
+        generatedSlotsData: state.generatedSlotsData
+          ? { ...state.generatedSlotsData, score }
+          : state.generatedSlotsData,
         isSavingSchedule: false,
       }));
-      return { ok: true };
+      return { ok: true, score, warnings: warnings ?? [] };
     } catch (error) {
       const message =
         error.response?.data?.message || "Failed to save schedule";
@@ -985,37 +957,6 @@ const useAdminStore = create((set, get) => ({
     }
   },
 
-  saveAndEvaluateSchedule: async (
-    session_id,
-    timetable_id,
-    gridObj,
-    slotsData,
-  ) => {
-    set({ isEvaluatingSchedule: true, scheduleError: null });
-    try {
-      const response = await axiosInstance.post(
-        API_PATHS.TIMETABLE.EVALUATE_SCHEDULE(timetable_id),
-        { grid: gridObj },
-      );
-      const { score } = response.data;
-      set((state) => ({
-        activeScheduleData: state.activeScheduleData
-          ? { ...state.activeScheduleData, grid: gridObj, score }
-          : state.activeScheduleData,
-        // Also update score in generatedSlotsData if present
-        generatedSlotsData: state.generatedSlotsData
-          ? { ...state.generatedSlotsData, score }
-          : state.generatedSlotsData,
-        isEvaluatingSchedule: false,
-      }));
-      return { ok: true, score };
-    } catch (error) {
-      const message =
-        error.response?.data?.message || "Failed to evaluate schedule";
-      set({ scheduleError: message, isEvaluatingSchedule: false });
-      return { ok: false, message };
-    }
-  },
   exportTimetableExcel: async (generation_id, sessionTerm) => {
     try {
       const response = await axiosInstance.get(
@@ -1032,6 +973,84 @@ const useAdminStore = create((set, get) => ({
     } catch (error) {
       const message =
         error.response?.data?.message || "Failed to export timetable";
+      return { ok: false, message };
+    }
+  },
+
+  // ── skeleton ────────────────────────────────────────────────────────────
+
+  fetchSkeleton: async (session_id) => {
+    set({ isFetchingSkeleton: true, skeletonError: null });
+    try {
+      const response = await axiosInstance.get(API_PATHS.TIMETABLE.SKELETON, {
+        params: { session_id },
+      });
+      set({ skeletonData: response.data.data, isFetchingSkeleton: false });
+      return { ok: true, data: response.data.data };
+    } catch (error) {
+      const message =
+        error.response?.data?.message || "Failed to fetch skeleton";
+      set({ skeletonError: message, isFetchingSkeleton: false });
+      return { ok: false, message };
+    }
+  },
+
+  // cells: [{ day, track, period_index, time_label, slot_label }]
+  // skeleton_id: pass to edit an existing draft, omit to create a new one
+  saveSkeletonDraft: async (session_id, cells, skeleton_id = null) => {
+    set({ isSavingSkeleton: true, skeletonError: null });
+    try {
+      const response = await axiosInstance.post(API_PATHS.TIMETABLE.SKELETON, {
+        session_id,
+        cells,
+        skeleton_id,
+      });
+      set({ skeletonData: response.data.data, isSavingSkeleton: false });
+      return { ok: true, data: response.data.data };
+    } catch (error) {
+      const message =
+        error.response?.data?.message || "Failed to save skeleton";
+      set({ skeletonError: message, isSavingSkeleton: false });
+      return { ok: false, message };
+    }
+  },
+
+  activateSkeleton: async (skeleton_id) => {
+    set({ isSavingSkeleton: true, skeletonError: null });
+    try {
+      const response = await axiosInstance.patch(
+        API_PATHS.TIMETABLE.SKELETON_ACTIVATE(skeleton_id),
+      );
+      set({ skeletonData: response.data.data, isSavingSkeleton: false });
+      return { ok: true, data: response.data.data };
+    } catch (error) {
+      const message =
+        error.response?.data?.message || "Failed to activate skeleton";
+      set({ skeletonError: message, isSavingSkeleton: false });
+      return { ok: false, message };
+    }
+  },
+
+  setBatchTrack: async (timetable_id, { day, batch_id, track }) => {
+    set({ isSavingTrack: true, scheduleError: null });
+    try {
+      const response = await axiosInstance.patch(
+        API_PATHS.TIMETABLE.SET_TRACK(timetable_id),
+        { day, batch_id, track },
+      );
+      set((state) => ({
+        activeScheduleData: state.activeScheduleData
+          ? {
+              ...state.activeScheduleData,
+              track_assignments: response.data.data.track_assignments,
+            }
+          : state.activeScheduleData,
+        isSavingTrack: false,
+      }));
+      return { ok: true };
+    } catch (error) {
+      const message = error.response?.data?.message || "Failed to update track";
+      set({ scheduleError: message, isSavingTrack: false });
       return { ok: false, message };
     }
   },

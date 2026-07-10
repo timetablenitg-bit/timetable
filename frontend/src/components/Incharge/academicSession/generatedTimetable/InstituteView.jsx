@@ -1,4 +1,19 @@
 // InstituteView.jsx
+//
+// CHANGED: `scheduleData.track2_batches` no longer exists on the backend
+// (the old lab_count >= 3 heuristic is gone — see timetableScheduleModel.js).
+// Track is now an admin-chosen per-(day, batch) projection stored in
+// scheduleData.track_assignments (falls back to
+// scheduleData.suggested_track_assignments as a hint, then defaults to
+// track 1), keyed by batch_id, not batch_name. We resolve batch_name ->
+// batch_id from slotsData since that's the only place both are available
+// together.
+//
+// NEW: the T1/T2 badge is now a clickable toggle. Clicking it PATCHes
+// track_assignments via adminStore.setBatchTrack — a pure display
+// projection, never triggers regeneration or rescoring (decision #6).
+// Toggle only ever renders on a day that actually has a track-2
+// arrangement (Monday/Tuesday/Thursday when the skeleton produced one).
 import React, { useState, useMemo } from "react";
 import {
   DAYS,
@@ -10,6 +25,19 @@ import {
 } from "./constants";
 import { LAB_COLOR, slotColor } from "./colors";
 import { getLabBlock } from "./helpers";
+import {
+  resolveBatchTrack,
+  buildBatchIdByName,
+} from "../../../../utils/resolveBatchTrack";
+import useAdminStore from "../../../../store/useAdminStore";
+
+// Days that support a track-2 arrangement. Must match what the skeleton
+// actually defines — see utils/defaultSkeletonCells.js, which only has
+// "Monday-2" and "Tuesday-2" rows. NOTE: backend trackController.js's
+// TOGGLE_DAYS currently also includes Thursday, which is stale relative to
+// the skeleton — flagged separately, should be fixed there too so a
+// Thursday PATCH can't silently set an unrenderable track assignment.
+const TOGGLE_DAYS = new Set(["Monday", "Tuesday"]);
 
 // ── FilterSelect ──────────────────────────────────────────────────────────────
 const FilterSelect = ({ label, value, onChange, options, colorClass }) => {
@@ -58,11 +86,39 @@ const FilterSelect = ({ label, value, onChange, options, colorClass }) => {
   );
 };
 
+// ── TrackToggle ────────────────────────────────────────────────────────────
+// Small reusable badge/button. Renders as a static-looking pill, but is a
+// real <button> that flips the batch's track for that day. `isT2` reflects
+// the CURRENT resolved track (from track_assignments); clicking it always
+// requests the opposite.
+const TrackToggle = ({ isT2, isSaving, onClick, className = "" }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    disabled={isSaving}
+    title={
+      isT2
+        ? "Track 2 (lab AM, theory PM) — click to switch to Track 1"
+        : "Track 1 (theory AM, lab PM) — click to switch to Track 2"
+    }
+    className={`inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-full font-semibold leading-none transition-colors disabled:opacity-50 disabled:cursor-wait ${
+      isT2
+        ? "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 hover:bg-purple-200 dark:hover:bg-purple-900/50"
+        : "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/40"
+    } ${className}`}
+  >
+    <span aria-hidden="true">{isSaving ? "⏳" : "🔁"}</span>
+    <span>{isT2 ? "T2" : "T1"}</span>
+  </button>
+);
+
 // ── InstituteView ─────────────────────────────────────────────────────────────
 const InstituteView = ({ scheduleData, slotsData }) => {
   const [selectedDay, setSelectedDay] = useState("Monday");
   const [batchFilter, setBatchFilter] = useState("");
   const [facultyFilter, setFacultyFilter] = useState("");
+
+  const { setBatchTrack, isSavingTrack, scheduleError } = useAdminStore();
 
   const isFiltered = !!(batchFilter || facultyFilter);
 
@@ -101,6 +157,12 @@ const InstituteView = ({ scheduleData, slotsData }) => {
   // Key fix: normalise faculty codes when matching so whitespace/case can't break ===
   const normFaculty = (code) => (code ?? "").trim();
 
+  // When a faculty filter is active, a slot is only shown if that faculty
+  // actually teaches it — everything else renders as an empty cell rather
+  // than being shown-but-highlighted.
+  const facultyMatches = (fac) =>
+    !facultyFilter || normFaculty(fac) === normFaculty(facultyFilter);
+
   const filteredBatches = useMemo(() => {
     let list = allBatches;
 
@@ -124,7 +186,41 @@ const InstituteView = ({ scheduleData, slotsData }) => {
     return list;
   }, [allBatches, batchFilter, facultyFilter, slotsData]);
 
-  const track2Batches = new Set(scheduleData?.track2_batches ?? []);
+  // batch_name -> batch_id, needed because track_assignments key off batch_id
+  const batchIdByName = useMemo(
+    () => buildBatchIdByName(slotsData),
+    [slotsData],
+  );
+
+  // Prefer the admin's saved choice; fall back to the engine's suggestion so
+  // a freshly-generated (not-yet-reviewed) timetable still looks sensible.
+  const trackAssignments = scheduleData?.track_assignments?.length
+    ? scheduleData.track_assignments
+    : (scheduleData?.suggested_track_assignments ?? []);
+
+  const isBatchOnTrack2 = (day, batchName) => {
+    const batchId = batchIdByName[batchName];
+    if (!batchId) return false;
+    return resolveBatchTrack(trackAssignments, day, batchId) === 2;
+  };
+
+  // ── track toggle ─────────────────────────────────────────────────────────
+  // Pure display projection — PATCHes track_assignments only. Never touches
+  // grid/score, never triggers regeneration (decision #6). No-ops silently
+  // if we can't resolve a batch_id or timetable_id yet (data still loading).
+  const handleToggleTrack = async (day, batchName) => {
+    const batchId = batchIdByName[batchName];
+    const timetableId = scheduleData?.timetable_id;
+    if (!batchId || !timetableId) return;
+
+    const current = resolveBatchTrack(trackAssignments, day, batchId);
+    const next = current === 2 ? 1 : 2;
+
+    await setBatchTrack(timetableId, { day, batch_id: batchId, track: next });
+    // adminStore.setBatchTrack merges the response's track_assignments back
+    // into activeScheduleData, so scheduleData/trackAssignments here reflect
+    // the change on next render — no manual refetch needed.
+  };
 
   // ── shared cell helpers ─────────────────────────────────────────────────────
   const getEntryForBatchPeriod = (batch, cell) => {
@@ -145,9 +241,10 @@ const InstituteView = ({ scheduleData, slotsData }) => {
     );
   };
 
-  const emptyCell = (key) => (
+  const emptyCell = (key, colSpan) => (
     <td
       key={key}
+      colSpan={colSpan}
       className="border border-gray-100 dark:border-gray-700 px-1 py-1 text-center"
     >
       <span className="text-[10px] text-gray-200 dark:text-gray-700">—</span>
@@ -167,10 +264,15 @@ const InstituteView = ({ scheduleData, slotsData }) => {
     const t2Map = Object.fromEntries(t2Cells.map((c) => [c.period_index, c]));
     const t1PmLab = getLabBlock(t1Map, PM_LAB_BLOCK);
     const t2AmLab = getLabBlock(t2Map, AM_LAB_BLOCK);
-    const isT2 = track2Batches.has(batch) && !!t2AmLab;
+    // isBatchOnTrack2 reflects the admin's saved choice; whether we can
+    // actually RENDER a lab block for it still depends on t2AmLab existing
+    // in the grid. But whether the TOGGLE ITSELF shows is decided purely by
+    // TOGGLE_DAYS, independent of grid content — see comment at top of file.
+    const isT2 = isBatchOnTrack2(day, batch) && !!t2AmLab;
     return {
       map: isT2 ? t2Map : t1Map,
       isT2,
+      rowHasT2: TOGGLE_DAYS.has(day),
       batchPmLab: isT2 ? null : t1PmLab,
       batchAmLab: isT2 ? t2AmLab : null,
     };
@@ -197,23 +299,11 @@ const InstituteView = ({ scheduleData, slotsData }) => {
       if (isT2 && batchAmLab) {
         if (pi === AM_LAB_BLOCK[0]) {
           const labEntry = getLabEntry(batchAmLab, batch);
-          if (!labEntry) {
-            return (
-              <td
-                key={pi}
-                colSpan={3}
-                className="border border-gray-100 dark:border-gray-700 px-1 py-1 text-center"
-              >
-                <span className="text-[10px] text-gray-200 dark:text-gray-700">
-                  —
-                </span>
-              </td>
-            );
+          if (!labEntry || !facultyMatches(labEntry.faculty_code)) {
+            return emptyCell(pi, 3);
           }
           const code = labEntry.course_code ?? batchAmLab;
           const fac = labEntry.faculty_code ?? "";
-          const isHighlighted =
-            facultyFilter && normFaculty(fac) === normFaculty(facultyFilter);
           return (
             <td
               key={pi}
@@ -221,13 +311,11 @@ const InstituteView = ({ scheduleData, slotsData }) => {
               className="border border-gray-100 dark:border-gray-700 px-1 py-1 align-middle"
             >
               <div
-                className={`rounded-md border px-2 py-1 text-center ${LAB_COLOR} ${isHighlighted ? "ring-2 ring-offset-1 ring-amber-400 dark:ring-amber-500" : ""}`}
+                className={`rounded-md border px-2 py-1 text-center ${LAB_COLOR}`}
               >
                 <p className="text-[11px] font-bold leading-none">{code}</p>
                 {fac && (
-                  <p
-                    className={`text-[9px] mt-0.5 leading-none ${isHighlighted ? "font-semibold opacity-90" : "opacity-60"}`}
-                  >
+                  <p className="text-[9px] mt-0.5 leading-none opacity-60">
                     {fac}
                   </p>
                 )}
@@ -245,23 +333,11 @@ const InstituteView = ({ scheduleData, slotsData }) => {
       if (!isT2 && batchPmLab) {
         if (pi === PM_LAB_BLOCK[0]) {
           const labEntry = getLabEntry(batchPmLab, batch);
-          if (!labEntry) {
-            return (
-              <td
-                key={pi}
-                colSpan={3}
-                className="border border-gray-100 dark:border-gray-700 px-1 py-1 text-center"
-              >
-                <span className="text-[10px] text-gray-200 dark:text-gray-700">
-                  —
-                </span>
-              </td>
-            );
+          if (!labEntry || !facultyMatches(labEntry.faculty_code)) {
+            return emptyCell(pi, 3);
           }
           const code = labEntry.course_code ?? batchPmLab;
           const fac = labEntry.faculty_code ?? "";
-          const isHighlighted =
-            facultyFilter && normFaculty(fac) === normFaculty(facultyFilter);
           return (
             <td
               key={pi}
@@ -269,13 +345,11 @@ const InstituteView = ({ scheduleData, slotsData }) => {
               className="border border-gray-100 dark:border-gray-700 px-1 py-1 align-middle"
             >
               <div
-                className={`rounded-md border px-2 py-1 text-center ${LAB_COLOR} ${isHighlighted ? "ring-2 ring-offset-1 ring-amber-400 dark:ring-amber-500" : ""}`}
+                className={`rounded-md border px-2 py-1 text-center ${LAB_COLOR}`}
               >
                 <p className="text-[11px] font-bold leading-none">{code}</p>
                 {fac && (
-                  <p
-                    className={`text-[9px] mt-0.5 leading-none ${isHighlighted ? "font-semibold opacity-90" : "opacity-60"}`}
-                  >
+                  <p className="text-[9px] mt-0.5 leading-none opacity-60">
                     {fac}
                   </p>
                 )}
@@ -293,11 +367,6 @@ const InstituteView = ({ scheduleData, slotsData }) => {
       const cell = map[pi] ?? null;
       const entry = getEntryForBatchPeriod(batch, cell);
       const name = cell?.slot_name;
-      const isHighlighted =
-        facultyFilter &&
-        entry &&
-        normFaculty(entry.faculty_code ?? entry.faculty) ===
-          normFaculty(facultyFilter);
 
       if (
         !entry &&
@@ -312,6 +381,10 @@ const InstituteView = ({ scheduleData, slotsData }) => {
 
       if (!entry) return emptyCell(pi);
 
+      if (!facultyMatches(entry.faculty_code ?? entry.faculty)) {
+        return emptyCell(pi);
+      }
+
       const code = entry.course_code ?? entry.course ?? "—";
       const fac = entry.faculty_code ?? entry.faculty ?? "";
       const color = slotColor(name);
@@ -321,16 +394,10 @@ const InstituteView = ({ scheduleData, slotsData }) => {
           key={pi}
           className="border border-gray-100 dark:border-gray-700 px-1 py-1"
         >
-          <div
-            className={`rounded-md border px-1.5 py-1 text-center ${color} ${isHighlighted ? "ring-2 ring-offset-1 ring-amber-400 dark:ring-amber-500" : ""}`}
-          >
+          <div className={`rounded-md border px-1.5 py-1 text-center ${color}`}>
             <p className="text-[11px] font-bold leading-none">{code}</p>
             {fac && (
-              <p
-                className={`text-[9px] mt-0.5 leading-none ${isHighlighted ? "font-semibold opacity-90" : "opacity-60"}`}
-              >
-                {fac}
-              </p>
+              <p className="text-[9px] mt-0.5 leading-none opacity-60">{fac}</p>
             )}
           </div>
         </td>
@@ -387,10 +454,9 @@ const InstituteView = ({ scheduleData, slotsData }) => {
           ) : (
             filteredBatches.map((batch, bi) =>
               DAYS.map((day, di) => {
-                const { map, isT2, batchPmLab, batchAmLab } = getDayTrackInfo(
-                  day,
-                  batch,
-                );
+                const { map, isT2, rowHasT2, batchPmLab, batchAmLab } =
+                  getDayTrackInfo(day, batch);
+                const assignedT2 = isBatchOnTrack2(day, batch);
                 const isFirstDay = di === 0;
 
                 return (
@@ -420,18 +486,11 @@ const InstituteView = ({ scheduleData, slotsData }) => {
                             : undefined
                         }
                       >
-                        <div className="flex items-center gap-1.5">
-                          {batch}
-                          {track2Batches.has(batch) && (
-                            <span className="text-[8px] px-1 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 font-medium">
-                              T2
-                            </span>
-                          )}
-                        </div>
+                        <div className="flex items-center gap-1.5">{batch}</div>
                       </td>
                     )}
 
-                    {/* Day label */}
+                    {/* Day label + track toggle */}
                     <td
                       className={`border border-gray-100 dark:border-gray-700 px-2 py-1.5 text-center text-[10px] font-semibold whitespace-nowrap ${
                         isT2
@@ -439,7 +498,19 @@ const InstituteView = ({ scheduleData, slotsData }) => {
                           : "text-gray-400 dark:text-gray-500"
                       }`}
                     >
-                      {day.slice(0, 3)}
+                      <span className="inline-flex items-center gap-1">
+                        {day.slice(0, 3)}
+                        {rowHasT2 && (
+                          <TrackToggle
+                            isT2={assignedT2}
+                            isSaving={isSavingTrack}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleTrack(day, batch);
+                            }}
+                          />
+                        )}
+                      </span>
                     </td>
 
                     {/* Period cells */}
@@ -473,6 +544,9 @@ const InstituteView = ({ scheduleData, slotsData }) => {
   const t1PmLab = getLabBlock(t1Map, PM_LAB_BLOCK);
   const t2AmLab = getLabBlock(t2Map, AM_LAB_BLOCK);
   const hasT2 = !!t2AmLab;
+  // Toggle button visibility: driven by TOGGLE_DAYS (backend source of
+  // truth), not by whether a lab block happens to be detected in the grid.
+  const canToggleTrack = TOGGLE_DAYS.has(selectedDay);
 
   const renderTimeGrid = () => (
     <>
@@ -502,14 +576,22 @@ const InstituteView = ({ scheduleData, slotsData }) => {
       </div>
 
       {/* Track info */}
-      {hasT2 && (
-        <div className="flex gap-2 text-xs flex-wrap">
+      {canToggleTrack && (
+        <div className="flex gap-2 text-xs flex-wrap items-center">
           <span className="px-2 py-1 rounded-md bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300">
             Track 1: theory 9–13, {t1PmLab ? `${t1PmLab} lab 14–17` : "free PM"}
           </span>
           <span className="px-2 py-1 rounded-md bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 text-purple-600 dark:text-purple-300">
-            Track 2: {t2AmLab} lab 9–12, theory 14–17
+            Track 2: {t2AmLab ? `${t2AmLab} lab 9–12` : "lab 9–12"}, theory
+            14–17
           </span>
+          <span className="text-[10px] text-gray-400 dark:text-gray-500 italic">
+            🔁 Click a batch's toggle to change how it's shown — doesn't affect
+            the score.
+          </span>
+          {scheduleError && (
+            <span className="text-[10px] text-red-500">{scheduleError}</span>
+          )}
         </div>
       )}
 
@@ -543,7 +625,12 @@ const InstituteView = ({ scheduleData, slotsData }) => {
           </thead>
           <tbody>
             {allBatches.map((batch, bi) => {
-              const isT2 = track2Batches.has(batch) && hasT2;
+              // Admin's saved choice for this batch/day, regardless of
+              // whether the grid has renderable lab content for track 2.
+              const assignedT2 = isBatchOnTrack2(selectedDay, batch);
+              // Whether we can actually render a track-2 grid (needs a
+              // detected lab block) — falls back to track 1's cells if not.
+              const isT2 = assignedT2 && hasT2;
               const map = isT2 ? t2Map : t1Map;
               const batchPmLab = isT2 ? null : t1PmLab;
               const batchAmLab = isT2 ? t2AmLab : null;
@@ -561,10 +648,12 @@ const InstituteView = ({ scheduleData, slotsData }) => {
                   <td className="border border-gray-100 dark:border-gray-700 px-3 py-2 text-xs font-semibold text-gray-600 dark:text-gray-300 sticky left-0 bg-white dark:bg-gray-800 z-10">
                     <div className="flex items-center gap-1.5">
                       {batch}
-                      {isT2 && (
-                        <span className="text-[8px] px-1 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 font-medium">
-                          T2
-                        </span>
+                      {canToggleTrack && (
+                        <TrackToggle
+                          isT2={assignedT2}
+                          isSaving={isSavingTrack}
+                          onClick={() => handleToggleTrack(selectedDay, batch)}
+                        />
                       )}
                     </div>
                   </td>

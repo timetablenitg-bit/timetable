@@ -87,31 +87,56 @@ export const API_PATHS = {
     UPDATE: (id) => `/api/v1/admin/room/${id}`,
     DELETE: (id) => `/api/v1/admin/room/${id}`,
   },
-  TIMETABLE: {
-    GENERATE: "/api/v1/admin/timetable/engine/generate",
-    EVALUATE: "/api/v1/admin/timetable/engine/evaluate",
-    SLOTS: "/api/v1/admin/timetable/engine/slots", // ← new
-    SCHEDULE: "/api/v1/admin/timetable/engine/schedule", // ← new
-    REWORK: "/api/v1/admin/timetable/engine/rework", // ← new
 
-    BULK_UPDATE: (session_id) =>
-      `/api/v1/admin/timetable/engine/slots/${session_id}`, // ← new
-    CREATE_SLOT: (session_id) =>
-      `/api/v1/admin/timetable/engine/slots/${session_id}`, // ← new
-    PATCH_SLOT: (session_id, slot_name) =>
-      `/api/v1/admin/timetable/engine/slots/${session_id}/${slot_name}`, // ← new
-    DELETE_SLOT: (session_id, slot_name) =>
-      `/api/v1/admin/timetable/engine/slots/${session_id}/${slot_name}`, // ← new
+  // ── TIMETABLE ────────────────────────────────────────────────────────────
+  // Mount prefix confirmed from app.js:
+  //   app.use("/api/v1/admin/timetable/engine", timetableRoutes);
+  // so every path below keeps the `/engine` segment.
+  TIMETABLE: {
+    // Skeleton (new — drives generation, replaces the old hardcoded TEMPLATE)
+    SKELETON: "/api/v1/admin/timetable/engine/skeleton",
+    SKELETON_ACTIVATE: (id) =>
+      `/api/v1/admin/timetable/engine/skeleton/${id}/activate`,
+
+    // Generation + reads
+    // NOTE: /generate is now router.post(...), not GET like the old
+    // controller. session_id must go in the request body, not query params.
+    GENERATE: "/api/v1/admin/timetable/engine/generate",
+    SCHEDULE: "/api/v1/admin/timetable/engine/schedule",
+    SLOTS: "/api/v1/admin/timetable/engine/slots",
+
+    // Save — replaces the old REWORK / EVALUATE / SAVE_SCHEDULE /
+    // EVALUATE_SCHEDULE split. Every save now re-validates + rescores in one
+    // round trip (see scheduleEditController.saveAndEvaluateSchedule).
     SAVE_SCHEDULE: (timetable_id) =>
-      `/api/v1/admin/timetable/engine/schedule/${timetable_id}`,
-    EVALUATE_SCHEDULE: (timetable_id) =>
-      `/api/v1/admin/timetable/engine/schedule/${timetable_id}/evaluate`,
+      `/api/v1/admin/timetable/engine/schedule/${timetable_id}/save`,
+
+    // Track toggle — admin-chosen per-day-per-batch display projection only.
+    // Never triggers regeneration or rescoring.
+    SET_TRACK: (timetable_id) =>
+      `/api/v1/admin/timetable/engine/schedule/${timetable_id}/track`,
+
+    // Manual review queue (new — overflow / choose_occurrences items)
+    MANUAL_REVIEW: "/api/v1/admin/timetable/engine/manual-review",
+    RESOLVE_OVERFLOW: (item_id) =>
+      `/api/v1/admin/timetable/engine/manual-review/${item_id}/overflow`,
+    RESOLVE_CHOOSE_OCCURRENCES: (item_id) =>
+      `/api/v1/admin/timetable/engine/manual-review/${item_id}/choose-occurrences`,
+
+    // Slot editing (path shape unchanged)
+    BULK_UPDATE: (session_id) =>
+      `/api/v1/admin/timetable/engine/slots/${session_id}`,
+    CREATE_SLOT: (session_id) =>
+      `/api/v1/admin/timetable/engine/slots/${session_id}`,
+    PATCH_SLOT: (session_id, slot_name) =>
+      `/api/v1/admin/timetable/engine/slots/${session_id}/${slot_name}`,
+    DELETE_SLOT: (session_id, slot_name) =>
+      `/api/v1/admin/timetable/engine/slots/${session_id}/${slot_name}`,
   },
+
   STUDENT: {
     GETMYREGISTRATION: (session_id) =>
       `/api/v1/student/course-registration/my-registration/${session_id}`,
-    START_REGISTRATION: "/api/v1/student/course-registration/start",
-    SAVE_COURSES: "/api/v1/student/course-registration/save",
     SUBMIT_REGISTRATION: "/api/v1/student/course-registration/submit",
     ACADEMICSESSIONS: "/api/v1/student/academicSessions",
     MY_BATCH: "/api/v1/student/my-batch",

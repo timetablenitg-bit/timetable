@@ -26,33 +26,31 @@ const SlotsView = ({ slotsData }) => {
   };
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
-      <table
-        className="border-collapse"
-        style={{ minWidth: 640, width: "100%" }}
-      >
+    <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800">
+      <table className="w-full border-collapse text-sm">
         <thead>
-          <tr className="bg-gray-50 dark:bg-gray-800/80">
+          <tr>
             <th
-              className="border border-gray-100 dark:border-gray-700 px-4 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 sticky left-0 bg-gray-50 dark:bg-gray-800/80 z-10"
-              style={{ minWidth: 140 }}
+              scope="col"
+              className="sticky left-0 z-10 w-32 border-b border-r border-gray-200 bg-gray-50 px-4 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400"
             >
               Batch
             </th>
             {lectureSlots.map((sl) => (
               <th
                 key={sl.slot_name}
-                className="border border-gray-100 dark:border-gray-700 px-3 py-2.5 text-center"
-                style={{ minWidth: 110 }}
+                scope="col"
+                className="min-w-[104px] border-b border-l border-gray-200 bg-gray-50 px-3 py-2.5 text-center dark:border-gray-800 dark:bg-gray-900"
               >
-                <span
-                  className={`inline-flex items-center justify-center w-7 h-7 rounded-lg border text-sm font-bold ${SLOT_COLORS[sl.slot_name] ?? SLOT_COLORS.A}`}
-                >
+                <div className="text-xs font-semibold text-gray-700 dark:text-gray-200">
                   {sl.slot_name}
-                </span>
-                <p className="text-[9px] text-gray-400 dark:text-gray-500 mt-1 font-normal">
-                  {sl.entries[0]?.sessions_per_week ?? 1}×/wk
-                </p>
+                </div>
+                <div className="mt-0.5 whitespace-nowrap text-[9px] font-normal leading-none text-gray-400 dark:text-gray-500">
+                  {sl.entries[0]?.credits ??
+                    sl.entries[0]?.sessions_per_week ??
+                    1}
+                  cr
+                </div>
               </th>
             ))}
           </tr>
@@ -61,44 +59,41 @@ const SlotsView = ({ slotsData }) => {
           {allBatches.map((batch, bi) => (
             <tr
               key={batch}
-              className={`hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors ${bi % 2 ? "bg-gray-50/30 dark:bg-gray-800/10" : ""}`}
+              className={
+                bi % 2 === 1
+                  ? "bg-gray-50/60 dark:bg-gray-900/40"
+                  : "bg-white dark:bg-gray-950"
+              }
             >
-              <td className="border border-gray-100 dark:border-gray-700 px-4 py-2 text-xs font-semibold text-gray-600 dark:text-gray-300 sticky left-0 bg-white dark:bg-gray-800 z-10">
+              <th
+                scope="row"
+                className="sticky left-0 z-10 border-r border-gray-200 bg-inherit px-4 py-2 text-left text-xs font-medium text-gray-700 dark:border-gray-800 dark:text-gray-300"
+              >
                 {batch}
-              </td>
+              </th>
               {lectureSlots.map((sl) => {
                 const entry = getEntry(sl.slot_name, batch);
-                if (!entry)
-                  return (
-                    <td
-                      key={sl.slot_name}
-                      className="border border-gray-100 dark:border-gray-700 px-3 py-2 text-center"
-                    >
-                      <span className="text-[10px] text-gray-200 dark:text-gray-700">
-                        —
-                      </span>
-                    </td>
-                  );
-                const code = entry.course_code ?? entry.course ?? "—";
-                const fac = entry.faculty_code ?? entry.faculty ?? "";
-                const color = SLOT_COLORS[sl.slot_name] ?? SLOT_COLORS.A;
                 return (
                   <td
                     key={sl.slot_name}
-                    className="border border-gray-100 dark:border-gray-700 px-1.5 py-1.5"
+                    className="border-l border-t border-gray-200 px-3 py-2 text-center align-middle dark:border-gray-800"
                   >
-                    <div
-                      className={`rounded-md border px-2 py-1.5 text-center ${color}`}
-                    >
-                      <p className="text-[11px] font-bold leading-none">
-                        {code}
-                      </p>
-                      {fac && (
-                        <p className="text-[9px] mt-0.5 opacity-60 leading-none">
-                          {fac}
+                    {entry ? (
+                      <div>
+                        <p className="text-xs font-semibold text-gray-800 dark:text-gray-100">
+                          {entry.course_code ?? entry.course ?? "—"}
                         </p>
-                      )}
-                    </div>
+                        {(entry.faculty_code ?? entry.faculty) && (
+                          <p className="mt-0.5 text-[10px] text-gray-400 dark:text-gray-500">
+                            {entry.faculty_code ?? entry.faculty}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-gray-200 dark:text-gray-700">
+                        –
+                      </span>
+                    )}
                   </td>
                 );
               })}

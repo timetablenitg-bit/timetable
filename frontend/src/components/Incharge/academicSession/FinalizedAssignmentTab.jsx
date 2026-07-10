@@ -13,6 +13,7 @@ import {
   Link,
   ChevronDown,
   ChevronRight,
+  X,
 } from "lucide-react";
 import useAdminStore from "../../../store/useAdminStore";
 
@@ -146,7 +147,6 @@ const FinalizedAssignmentTab = ({ session }) => {
     batches,
     fetchCourseAssignments,
     generateTimetable,
-    evaluateTimetable,
   } = useAdminStore();
 
   const [isLoading, setIsLoading] = useState(true);
