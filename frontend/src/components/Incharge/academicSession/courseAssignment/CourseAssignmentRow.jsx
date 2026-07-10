@@ -7,7 +7,7 @@ import SharedLabPicker from "./SharedLabPicker";
 import SyncedWithPicker from "./SyncedWithPicker";
 import {
   getFacultyPoolForRow,
-  getLabCoursePoolForRow,
+  getLabAssignmentPoolForRow,
   getSyncCandidatesForRow,
 } from "./RowHelpers";
 import { ASSIGNMENT_TYPE_OPTIONS, COMPONENT_TYPE_OPTIONS } from "./constants";
@@ -33,7 +33,12 @@ const CourseAssignmentRow = ({
       : "hover:bg-gray-50 dark:hover:bg-gray-700/30";
 
   const isLab = row.component_type === "lab";
-  const labCoursePool = isLab ? getLabCoursePoolForRow(row, courses) : [];
+  // 🔥 assignment-based pool — lets rows in DIFFERENT batches running the
+  // SAME lab course (e.g. Chemistry Lab for SecA and SecB) still be linked,
+  // since each batch's session is a distinct CourseAssignment.
+  const labAssignmentPool = isLab
+    ? getLabAssignmentPoolForRow(row, allAssignments)
+    : [];
   // 🔥 same-batch assignments are excluded here (a course can't be linked
   // with another course offered in the same batch)
   const syncCandidates = getSyncCandidatesForRow(
@@ -144,7 +149,7 @@ const CourseAssignmentRow = ({
         <div className="flex items-center justify-center gap-1.5">
           {isLab && (
             <SharedLabPicker
-              labCoursePool={labCoursePool}
+              labAssignmentPool={labAssignmentPool}
               sharedLabWith={row.shared_lab_with}
               onChange={(next) => onUpdateRow({ shared_lab_with: next })}
               compact

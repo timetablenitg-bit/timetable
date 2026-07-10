@@ -13,16 +13,43 @@ export const getFacultyPoolForRow = (row, batch, faculties) => {
   return faculties.filter((f) => depts.has(f.department));
 };
 
-// Candidate courses a lab row can declare a shared room with.
-// Only other LAB-type courses, excluding the row's own course.
-export const getLabCoursePoolForRow = (row, courses) => {
-  const ownCourseId = (
-    row.course?.is_elective_slot ? row.elective_course?._id : row.course?._id
-  )?.toString();
-
-  return courses.filter(
-    (c) => c.course_type === "LAB" && c._id?.toString() !== ownCourseId,
-  );
+// Candidate LAB ASSIGNMENTS a row can declare a shared physical lab room
+// with. Built from allAssignments (not courses), because two different
+// batches can run the exact SAME course (e.g. "Chemistry Lab" offered to
+// both 2ndSemSecA and 2ndSemSecB) as two separate CourseAssignment docs —
+// those specific batch sessions are what need to be linked. A course id
+// alone can't disambiguate "SecA's chemistry lab" from "SecB's chemistry
+// lab" since they share the same course_id.
+//
+// Only the row's own saved assignment is excluded. Everything else
+// (including other lab courses in the same batch, and even other lab rows
+// within the SAME batch) is left in — different batches/sections often
+// genuinely share one physical room at overlapping times, which is exactly
+// the scenario this feature exists for.
+//
+// `allAssignments` is the raw populated list from the store
+// (useAdminStore().courseAssignments), same source getSyncCandidatesForRow
+// uses.
+export const getLabAssignmentPoolForRow = (row, allAssignments) => {
+  return (allAssignments ?? [])
+    .filter((a) => a.component_type === "lab")
+    .filter((a) => a._id?.toString() !== row.assignmentId?.toString())
+    .map((a) => {
+      const courseCode = a.course_id?.course_code ?? "";
+      const courseName = a.course_id?.course_name ?? "";
+      const batchLabel = (a.batch_ids ?? [])
+        .map((b) => b.batch_name)
+        .join(", ");
+      // 🔍 adjust `.name` if your Faculty schema uses a different field
+      const facultyName = a.faculty_id?.name ?? "";
+      return {
+        _id: a._id,
+        course_code: courseCode,
+        course_name: courseName,
+        batch_name: batchLabel,
+        faculty_name: facultyName,
+      };
+    });
 };
 
 // Candidate assignments a row can be slot-synced with.
@@ -88,9 +115,9 @@ export const getSyncCandidatesForRow = (row, allAssignments, batchId) => {
 // For slot rows: course_id = actual elective, elective_slot_id = slot._id
 // For normal rows: course_id = course._id, elective_slot_id = null
 //
-// shared_lab_with now holds ASSIGNMENT ids (specific batch lab sessions),
-// not course ids — see getLabAssignmentPoolForRow above. No change needed
-// here since we just pass the array through as-is.
+// shared_lab_with holds ASSIGNMENT ids (specific batch lab sessions), not
+// course ids — see getLabAssignmentPoolForRow above. No change needed here
+// since we just pass the array through as-is.
 //
 // Returns null if the row isn't complete enough to save yet.
 export const buildRowPayload = (row, batchId, sessionId) => {

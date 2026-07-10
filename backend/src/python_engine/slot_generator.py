@@ -1,7 +1,58 @@
 """
-slot_generator.py  –  v3
+slot_generator.py  –  v5
 =============================================
-Changes from v2:
+Changes from v4:
+
+  * BUGFIX: `shared_lab_with` anti-affinity was silently unenforced
+    whenever the two linked assignments belonged to the SAME course.
+    `_group_lab_assignments_by_course` grouped every lab assignment for
+    a course into a single atomic placement block *before* the
+    exclusion map was ever consulted, and that block is always placed
+    on one single day. Two same-course assignments therefore always
+    landed on the same day together, and the exclusion check (which
+    only compares a group being placed against *other already-placed
+    groups*) never got a chance to fire, because they were the same
+    group.
+
+    This is exactly the most common real case for the field (two
+    batch-split lab sections of the same course sharing one physical
+    lab room, needing to run on different days). Fixed by building the
+    lab exclusion map first and passing it into
+    `_group_lab_assignments_by_course`, which now splits a course's
+    assignments into separate singleton placement groups whenever an
+    exclusion edge exists between any of them. Course-level batch-split
+    convenience grouping is otherwise unchanged for courses with no
+    internal shared_lab_with links.
+
+Changes from v3 (still in effect):
+
+  * shared_lab_with SEMANTICS FLIP (schema change: ref went from Course
+    to CourseAssignment). Previously this field meant "merge these lab
+    assignments into one combined block" — two linked assignments got a
+    shared shared_group_id and were placed together on purpose, with
+    same-faculty overlap explicitly waived for members of that group.
+    That's gone. The field is now an ANTI-AFFINITY constraint: linked
+    assignments compete for the same physical lab resource and must NOT
+    land on the same lab day, full stop, regardless of faculty/batch.
+
+    Course-level batch-split grouping (assignments sharing a course_id
+    auto-placed together) is UNCHANGED in spirit but is now
+    exclusion-aware — see the v5 bugfix above — and is otherwise
+    independent of shared_lab_with — `_resolve_shared_lab_groups` (course-id
+    graph + shared_lab_with union-find) is gone, replaced by
+    `_group_lab_assignments_by_course` (grouping, now exclusion-aware) and
+    `_build_lab_exclusion_map` (pairwise exclusion, built over
+    assignment ids, no transitive closure — only direct explicit pairs
+    are honored, per the "ONLY if explicitly linked" rule).
+
+    NOTE: `_build_lab_exclusion_map` only recognizes ids that belong to
+    another *lab*-classified assignment in this run (`valid_ids` is
+    scoped to `lab_assignments`). If shared_lab_with references a
+    non-lab assignment, that reference is silently ignored here — see
+    the "flag elsewhere" notes for why this should be validated
+    upstream instead.
+
+Changes from v2 (still in effect):
 
   * BUGFIX (rule 2.1): `_clashes_with_adjacency` was blocking on BOTH
     faculty overlap AND batch overlap between neighboring labels. The
@@ -56,9 +107,14 @@ to the anchor's actual days — same mechanism a standalone 2-credit
 course goes through. There is no separate sync-specific placement path;
 sync only decides which label a group is anchored to (decision #6).
 
-shared_lab_with: two lab entries may share a lab block ONLY if explicitly
-linked, and are still checked for faculty/batch collision like anything
-else. No room/resource concept exists anywhere (decision #1).
+shared_lab_with: two lab assignments linked this way must NOT be placed
+on the same lab day (anti-affinity, see the v4 changelog above). This is
+now the only meaning of shared_lab_with; it no longer merges entries.
+Same-faculty/batch collision within a single course's own batch-split
+group is still checked like anything else. No room/resource concept
+exists anywhere else in this system (decision #1) — this exclusion map
+is effectively standing in for "same physical lab" without modeling labs
+as a resource generally.
 """
 
 import sys
@@ -407,65 +463,109 @@ def _place_group(group, classification, buckets, occurrence_counts,
 
 # ── lab placement ────────────────────────────────────────────────────────────
 
-def _resolve_shared_lab_groups(lab_assignments):
-    """Same connected-component approach as synced_with, but for
-    shared_lab_with (course_id references, not assignment ids)."""
+def _group_lab_assignments_by_course(lab_assignments, exclusion_map):
+    """
+    Assignments for the same course are still placed together as one lab
+    block by default — this is a batch-split convenience, independent of
+    shared_lab_with in the general case.
+
+    BUGFIX (v5): if two assignments *within the same course* are linked
+    via shared_lab_with, merging them unconditionally into one block
+    would place them on the same day together, and the anti-affinity
+    check would never get a chance to run (it only compares a group
+    being placed against other, separately-placed groups). So: whenever
+    a course's assignments contain an internal shared_lab_with edge, we
+    don't merge that course at all — every assignment in it becomes its
+    own singleton placement group instead, so each goes through
+    placement (and therefore the exclusion check against each other)
+    independently. Courses with no internal exclusion edges are grouped
+    exactly as before.
+    """
     by_course = defaultdict(list)
     for a in lab_assignments:
         by_course[str(a["course_id"]["_id"])].append(a)
 
-    adj = defaultdict(set)
-    for a in lab_assignments:
-        cid = str(a["course_id"]["_id"])
-        for other_course_id in a.get("shared_lab_with", []) or []:
-            adj[cid].add(str(other_course_id))
-            adj[str(other_course_id)].add(cid)
-
-    visited = set()
     groups = []
-    for a in lab_assignments:
-        cid = str(a["course_id"]["_id"])
-        if cid in visited:
-            continue
-        stack = [cid]
-        component_courses = []
-        while stack:
-            node = stack.pop()
-            if node in visited:
-                continue
-            visited.add(node)
-            component_courses.append(node)
-            stack.extend(adj[node] - visited)
-        component_assignments = [
-            a for cid2 in component_courses for a in by_course.get(cid2, [])
-        ]
-        groups.append(component_assignments)
-
+    for course_assignments in by_course.values():
+        ids = {str(a["_id"]) for a in course_assignments}
+        has_internal_exclusion = any(
+            exclusion_map.get(str(a["_id"]), set()) & (ids - {str(a["_id"])})
+            for a in course_assignments
+        )
+        if has_internal_exclusion:
+            groups.extend([a] for a in course_assignments)
+        else:
+            groups.append(course_assignments)
     return groups
+
+def _build_lab_exclusion_map(lab_assignments):
+    """
+    shared_lab_with now holds CourseAssignment _ids (was Course _ids).
+    It's an anti-affinity constraint, not a merge request: linked
+    assignments compete for the same physical lab and must NOT be placed
+    on the same lab day, regardless of faculty/batch overlap. Only
+    direct explicit pairs are honored (no transitive closure), and only
+    ids that belong to another lab-classified assignment in this run are
+    recognized — a reference to a non-lab assignment is silently dropped
+    here (see the "flag elsewhere" notes: this really should be
+    validated upstream instead of swallowed here).
+    """
+    valid_ids = {str(a["_id"]) for a in lab_assignments}
+    exclusion = defaultdict(set)
+    for a in lab_assignments:
+        aid = str(a["_id"])
+        for other_id in a.get("shared_lab_with", []) or []:
+            oid = str(other_id)
+            if oid in valid_ids:
+                exclusion[aid].add(oid)
+                exclusion[oid].add(aid)
+    return exclusion
 
 def _place_labs(lab_assignments, occurrence_counts, adjacency_map, manual_review, rng,
                  faculty_violation_counts):
     """
-    Builds LAB_MONDAY / LAB_TUESDAY / LAB_THURSDAY arrays. Two lab entries
-    only share a block if explicitly linked via shared_lab_with — no
-    implicit sharing. Still checked for faculty/batch collision and
-    against the adjacency map like everything else (decision #1, #4).
+    Builds LAB_MONDAY / LAB_TUESDAY / LAB_THURSDAY arrays. Course-level
+    batch-split groups are placed together as one block (see
+    _group_lab_assignments_by_course), except where shared_lab_with
+    forces a split within the course itself (v5 bugfix).
+    shared_lab_with-linked assignments are kept OFF the same day as each
+    other (see _build_lab_exclusion_map) — this is checked independently
+    of, and in addition to, the normal faculty/batch clash and adjacency
+    checks (decision #1, #4).
     """
     lab_slots = {day: [] for day in LAB_DAYS}
     lab_label_days = [d for d in LAB_DAYS if occurrence_counts.get(LAB_LABEL, 0) > 0]
     if not lab_label_days:
         lab_label_days = LAB_DAYS  # fall back if skeleton didn't report it
 
-    groups = _resolve_shared_lab_groups(lab_assignments)
+    # Build the exclusion map FIRST — grouping needs to know about it so
+    # it doesn't merge mutually-excluded assignments into one atomic
+    # block before the exclusion check ever gets a chance to run.
+    exclusion_map = _build_lab_exclusion_map(lab_assignments)
+    placed_day_by_assignment = {}  # assignment_id -> day it landed on
+
+    groups = _group_lab_assignments_by_course(lab_assignments, exclusion_map)
     groups.sort(key=lambda g: -sum(len(a["batch_ids"]) for a in g))
 
     for group in groups:
         shared_group_id = str(uuid.uuid4()) if len(group) > 1 else None
         entries = [_make_lab_entry(a, shared_group_id=shared_group_id) for a in group]
+        group_ids = {str(a["_id"]) for a in group}
 
         placed_day = None
         placed_soft_hits = set()
         for day in rng.sample(lab_label_days, len(lab_label_days)):
+            # anti-affinity: skip this day if any assignment in the group
+            # is linked (via shared_lab_with) to something already placed
+            # here today.
+            blocked_by_exclusion = any(
+                placed_day_by_assignment.get(linked_id) == day
+                for aid in group_ids
+                for linked_id in exclusion_map.get(aid, ())
+            )
+            if blocked_by_exclusion:
+                continue
+
             fake_buckets = {f"LAB@{day}": lab_slots[day]}
             fake_adjacency = {f"LAB@{day}": adjacency_map.get(LAB_LABEL, [])}
             ok, soft_hits = _can_place(
@@ -485,12 +585,15 @@ def _place_labs(lab_assignments, occurrence_counts, adjacency_map, manual_review
                     if e["faculty_id"] in placed_soft_hits:
                         e["adjacency_soft_violation"] = True
             lab_slots[placed_day].extend(entries)
+            for aid in group_ids:
+                placed_day_by_assignment[aid] = placed_day
         else:
             for a in group:
                 manual_review.append(_overflow_item(
                     a, 1,
                     f"Lab {a['course_id']['course_code']} could not be placed "
-                    f"on any of {', '.join(lab_label_days)} without a clash.",
+                    f"on any of {', '.join(lab_label_days)} without a clash "
+                    f"or a lab-resource conflict with a linked assignment.",
                 ))
 
     return lab_slots

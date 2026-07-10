@@ -60,7 +60,7 @@ const courseAssignmentSchema = new mongoose.Schema(
     shared_lab_with: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Course",
+        ref: "CourseAssignment",
       },
     ],
 

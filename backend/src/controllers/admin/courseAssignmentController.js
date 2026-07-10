@@ -21,7 +21,21 @@ export const fetchCourseAssignments = async (req, res) => {
       .populate("faculty_id", "name email faculty_code")
       .populate("batch_ids", "batch_name")
       .populate("elective_slot_id", "course_code course_name")
-      .populate("shared_lab_with", "course_code course_name")
+      // 🔥 shared_lab_with now holds ASSIGNMENT ids (specific batch lab
+      // sessions), not course ids — a course id alone can't tell
+      // "2ndSemSecA's Chemistry Lab" apart from "2ndSemSecB's Chemistry
+      // Lab" since they share the same course_id. Populate it the same way
+      // synced_with is populated below so the frontend can show batch name,
+      // course, and faculty for each linked session.
+      .populate({
+        path: "shared_lab_with",
+        select: "course_id batch_ids faculty_id",
+        populate: [
+          { path: "course_id", select: "course_code course_name" },
+          { path: "batch_ids", select: "batch_name" },
+          { path: "faculty_id", select: "name" },
+        ],
+      })
       .populate({
         path: "synced_with",
         select: "course_id batch_ids",
@@ -112,6 +126,16 @@ export const createCourseAssignment = async (req, res) => {
       await CourseAssignment.updateMany(
         { _id: { $in: synced_with } },
         { $addToSet: { synced_with: assignment._id } },
+      );
+    }
+
+    // 🔥 keep shared_lab_with symmetric too — same reasoning as synced_with.
+    // If SecA's lab links to SecB's lab, SecB's row should immediately show
+    // the reverse link without needing a separate manual edit.
+    if (shared_lab_with?.length) {
+      await CourseAssignment.updateMany(
+        { _id: { $in: shared_lab_with } },
+        { $addToSet: { shared_lab_with: assignment._id } },
       );
     }
 
@@ -214,6 +238,30 @@ export const updateCourseAssignment = async (req, res) => {
       }
     }
 
+    // 🔥 reconcile symmetric shared_lab_with links if that field changed —
+    // same diff-and-patch approach as synced_with above, so linking/
+    // unlinking a shared lab room stays consistent on both sides.
+    if (updates.shared_lab_with !== undefined) {
+      const before = existing.shared_lab_with.map((x) => String(x));
+      const after = updates.shared_lab_with.map((x) => String(x));
+
+      const removed = before.filter((x) => !after.includes(x));
+      const added = after.filter((x) => !before.includes(x));
+
+      if (removed.length) {
+        await CourseAssignment.updateMany(
+          { _id: { $in: removed } },
+          { $pull: { shared_lab_with: id } },
+        );
+      }
+      if (added.length) {
+        await CourseAssignment.updateMany(
+          { _id: { $in: added } },
+          { $addToSet: { shared_lab_with: id } },
+        );
+      }
+    }
+
     res.status(200).json({
       success: true,
       message: "Course assignment updated successfully",
@@ -255,6 +303,13 @@ export const deleteCourseAssignment = async (req, res) => {
       { $pull: { synced_with: id } },
     );
 
+    // 🔥 clean up any symmetric shared_lab_with links pointing at the
+    // deleted doc, same as synced_with above
+    await CourseAssignment.updateMany(
+      { shared_lab_with: id },
+      { $pull: { shared_lab_with: id } },
+    );
+
     res.status(200).json({
       success: true,
       message: "Course assignment deleted successfully",
@@ -282,17 +337,21 @@ export const bulkUpsertCourseAssignments = async (req, res) => {
         .json({ success: false, message: "Assignments array is required" });
     }
 
-    // 🔥 snapshot existing synced_with for anything being updated, so we can
-    // diff before/after and keep symmetric back-links in sync
+    // 🔥 snapshot existing synced_with / shared_lab_with for anything being
+    // updated, so we can diff before/after and keep symmetric back-links in
+    // sync for both fields
     const existingIds = assignments.filter((a) => a._id).map((a) => a._id);
     const existingDocs = existingIds.length
       ? await CourseAssignment.find(
           { _id: { $in: existingIds } },
-          "synced_with",
+          "synced_with shared_lab_with",
         )
       : [];
     const beforeSyncMap = new Map(
       existingDocs.map((d) => [String(d._id), d.synced_with.map(String)]),
+    );
+    const beforeLabMap = new Map(
+      existingDocs.map((d) => [String(d._id), d.shared_lab_with.map(String)]),
     );
 
     const operations = assignments.map((item) => {
@@ -377,6 +436,33 @@ export const bulkUpsertCourseAssignments = async (req, res) => {
         await CourseAssignment.updateMany(
           { _id: { $in: added } },
           { $addToSet: { synced_with: item._id } },
+        );
+      }
+    }
+
+    // 🔥 reconcile symmetric shared_lab_with back-links, same pattern as
+    // synced_with above. shared_lab_with can only be set on rows that
+    // already have an _id too, since the picker is built from
+    // allAssignments (saved sessions only).
+    for (const item of assignments) {
+      if (!item._id || item.shared_lab_with === undefined) continue;
+
+      const before = beforeLabMap.get(String(item._id)) || [];
+      const after = (item.shared_lab_with || []).map(String);
+
+      const removed = before.filter((x) => !after.includes(x));
+      const added = after.filter((x) => !before.includes(x));
+
+      if (removed.length) {
+        await CourseAssignment.updateMany(
+          { _id: { $in: removed } },
+          { $pull: { shared_lab_with: item._id } },
+        );
+      }
+      if (added.length) {
+        await CourseAssignment.updateMany(
+          { _id: { $in: added } },
+          { $addToSet: { shared_lab_with: item._id } },
         );
       }
     }

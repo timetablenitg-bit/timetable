@@ -27,22 +27,27 @@ const SyncedWithPicker = ({
     setSearch("");
   };
 
-  const filteredCandidates = syncCandidates.filter((a) => {
-    if (!search.trim()) return true;
-    const q = search.trim().toLowerCase();
-    // 🔍 adjust these field names to match your actual syncCandidates shape
-    const haystack = [
-      a.label,
-      a.course_code,
-      a.course_name,
-      a.course?.course_code,
-      a.course?.course_name,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-    return haystack.includes(q);
-  });
+  const filteredCandidates = syncCandidates
+    .filter((a) => {
+      if (!search.trim()) return true;
+      const q = search.trim().toLowerCase();
+      const haystack = [
+        a.label,
+        a.course_code,
+        a.course_name,
+        a.course?.course_code,
+        a.course?.course_name,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    })
+    .sort((a, b) => {
+      const aSelected = selectedIds.has(a._id?.toString());
+      const bSelected = selectedIds.has(b._id?.toString());
+      return aSelected === bSelected ? 0 : aSelected ? -1 : 1;
+    });
 
   if (disabled) {
     return compact ? (
