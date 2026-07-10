@@ -292,6 +292,8 @@ const GeneratedTimetableTab = ({ session }) => {
         node: (
           <ManualReviewPanel
             session={session}
+            scheduleData={displayScheduleData} // NEW
+            slotsData={generatedSlotsData}
             onResolved={handleReviewResolved}
           />
         ),

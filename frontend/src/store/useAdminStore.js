@@ -957,6 +957,25 @@ const useAdminStore = create((set, get) => ({
     }
   },
 
+  // API_PATHS.TIMETABLE.MANUAL_REVIEW_AVAILABILITY = (id) =>
+  //   `/admin/timetable/manual-review/${id}/availability`,
+
+  fetchAvailability: async (item_id) => {
+    set({ isFetchingAvailability: true, availabilityError: null });
+    try {
+      const response = await axiosInstance.get(
+        API_PATHS.TIMETABLE.MANUAL_REVIEW_AVAILABILITY(item_id),
+      );
+      set({ isFetchingAvailability: false });
+      return { ok: true, data: response.data.data };
+    } catch (error) {
+      const message =
+        error.response?.data?.message || "Failed to fetch availability";
+      set({ availabilityError: message, isFetchingAvailability: false });
+      return { ok: false, message };
+    }
+  },
+
   exportTimetableExcel: async (generation_id, sessionTerm) => {
     try {
       const response = await axiosInstance.get(

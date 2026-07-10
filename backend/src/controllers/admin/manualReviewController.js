@@ -14,6 +14,7 @@ import { ManualReviewItem } from "../../models/manualReviewModel.js";
 import { GeneratedSlot } from "../../models/generatedSlotModel.js";
 import { TimetableSchedule } from "../../models/timetableScheduleModel.js";
 import { CourseAssignment } from "../../models/courseAssignmentModel.js";
+import { computePlacementAvailability } from "../../utils/computePlacementAvailability.js";
 
 // ── GET /api/v1/admin/timetable/manual-review?session_id= ──────────────────
 // Returns pending items for the session's latest generation run.
@@ -286,6 +287,71 @@ export const resolveChooseOccurrencesItem = async (req, res) => {
     });
   } catch (err) {
     console.error("[resolveChooseOccurrencesItem]", err);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
+  }
+};
+// ── GET /api/v1/admin/timetable/manual-review/:item_id/availability ────────
+// Returns a per-cell free/shared_ok/blocked map for THIS item's assignment,
+// so the frontend can render a clickable timetable instead of raw selects.
+export const getItemAvailability = async (req, res) => {
+  try {
+    const { item_id } = req.params;
+
+    const item = await ManualReviewItem.findById(item_id).populate({
+      path: "assignment_id",
+      populate: ["course_id", "faculty_id", "batch_ids"],
+    });
+    if (!item) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Review item not found" });
+    }
+
+    const schedule = await TimetableSchedule.findOne({
+      session_id: item.session_id,
+      generation_id: item.generation_id,
+    });
+    if (!schedule) {
+      return res
+        .status(404)
+        .json({
+          success: false,
+          message: "Schedule not found for this generation",
+        });
+    }
+
+    const slots = await GeneratedSlot.find({
+      session_id: item.session_id,
+      generation_id: item.generation_id,
+    });
+
+    const assignment = item.assignment_id;
+    const batchIds = (assignment.batch_ids ?? []).map((b) => b._id);
+
+    const availability = computePlacementAvailability({
+      schedule,
+      slots,
+      batchIds,
+      facultyId: assignment.faculty_id?._id,
+      currentAssignmentId: assignment._id,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        availability,
+        batches: (assignment.batch_ids ?? []).map((b) => ({
+          id: b._id,
+          name: b.batch_name,
+        })),
+        course_code: assignment.course_id?.course_code,
+        faculty_code: assignment.faculty_id?.faculty_code,
+      },
+    });
+  } catch (err) {
+    console.error("[getItemAvailability]", err);
     return res
       .status(500)
       .json({ success: false, message: "Internal server error" });

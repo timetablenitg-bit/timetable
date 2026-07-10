@@ -20,6 +20,7 @@ import {
   getPendingReviewItems,
   resolveOverflowItem,
   resolveChooseOccurrencesItem,
+  getItemAvailability,
 } from "../../controllers/admin/manualReviewController.js";
 
 import {
@@ -49,6 +50,7 @@ router.patch("/schedule/:id/track", setBatchTrack);
 
 // Manual review queue
 router.get("/manual-review", getPendingReviewItems);
+router.get("/manual-review/:item_id/availability", getItemAvailability);
 router.patch("/manual-review/:item_id/overflow", resolveOverflowItem);
 router.patch(
   "/manual-review/:item_id/choose-occurrences",
