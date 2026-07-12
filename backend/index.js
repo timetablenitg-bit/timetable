@@ -18,6 +18,8 @@ import batchRoutesStudent from "./src/routes/student/batchRoutes.student.js";
 import courseRegistrationAdminRoutes from "./src/routes/admin/courseRegistrationRoutes.Admin.js";
 import userRoutes from "./src/routes/admin/userRoutes.js";
 import exportRoutes from "./src/routes/exportRoutes.js";
+import studentFeedbackRoutes from "./src/routes/student/feedbackRoutes.student.js";
+import adminFeedbackRoutes from "./src/routes/admin/feedbackRoutes.admin.js";
 
 import timetablePublicRoutes from "./src/routes/Timetablepublicroutes.js"; // ← new
 
@@ -51,6 +53,10 @@ app.use("/api/v1/export", exportRoutes);
 app.use("/api/v1/student/course-registration", courseRegistrationRoutes);
 app.use("/api/v1/student/academicSessions", academicSessionRoutesStudent);
 app.use("/api/v1/student/my-batch", batchRoutesStudent);
+
+//feedback
+app.use("/api/v1/student/feedback", studentFeedbackRoutes);
+app.use("/api/v1/admin/feedback", adminFeedbackRoutes);
 
 app.use("/api/v1/timetable", timetablePublicRoutes); // for public timetable endpoints (active session, schedule, slots)
 

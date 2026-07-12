@@ -10,6 +10,7 @@ import {
   Layers,
   DoorOpen,
   ClipboardList,
+  MessageSquare,
 } from "lucide-react";
 
 import Navbaar from "../components/Navbaar";
@@ -23,6 +24,7 @@ import Batch from "../components/Batch/Batch";
 import Room from "../components/Room/Room";
 import AcademicSession from "../components/Incharge/academicSession/AcademicSession";
 import { useAuthStore } from "../store/useAuthStore";
+import FeedbackList from "../components/Incharge/FeedbackList";
 
 const Incharge = () => {
   const [openSidebar, setOpenSidebar] = useState(false);
@@ -51,6 +53,8 @@ const Incharge = () => {
         return <Batch />;
       case "room":
         return <Room />;
+      case "feedback":
+        return <FeedbackList />;
       case "academicSession":
         return (
           <AcademicSession
@@ -71,6 +75,7 @@ const Incharge = () => {
     { key: "faculty", label: "Faculty Directory", icon: Users },
     { key: "course", label: "Course Management", icon: BookOpen },
     { key: "batch", label: "Batch Management", icon: Layers },
+    { key: "feedback", label: "Student Feedback", icon: MessageSquare },
     { key: "room", label: "Room Management", icon: DoorOpen },
     { key: "request", label: "Pending Requests", icon: ClipboardList },
   ];

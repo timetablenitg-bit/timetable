@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import axiosInstance from "../lib/axiosInstance";
 import { API_PATHS } from "../utils/apiPaths";
+import FeedbackForm from "../components/Student/FeedbackForm";
 
 const Student = () => {
   const { authUser } = useAuthStore();
@@ -64,8 +65,8 @@ const Student = () => {
         return <TableModal />;
       case "registration":
         return <CourseRegistration />;
-      // case "notices":
-      //   return <NoticeBoard />;
+      case "feedback":
+        return <FeedbackForm />;
       default:
         return <TableModal />;
     }
@@ -75,14 +76,14 @@ const Student = () => {
   const menuItems = [
     { key: "timetable", label: "My Timetable", icon: CalendarDays },
     { key: "registration", label: "Backlog Registration", icon: BookPlus },
-    // { key: "notices", label: "Notice Board", icon: Bell },
+    { key: "feedback", label: "Feedback", icon: MessageSquare },
   ];
 
   return (
     <div className="h-screen flex flex-col bg-slate-100 dark:bg-slate-900 overflow-hidden">
       {/* Profile Setup form */}
       {openForm === "true" && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 backdrop-blur-sm px-4">
+        <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/30 backdrop-blur-sm px-4">
           <div className="relative w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6 shadow-2xl">
             {/* Close Button */}
             <button

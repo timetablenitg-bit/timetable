@@ -135,10 +135,6 @@ export const API_PATHS = {
     MANUAL_REVIEW_LIST: "/api/v1/admin/timetable/engine/manual-review",
     MANUAL_REVIEW_AVAILABILITY: (item_id) =>
       `/api/v1/admin/timetable/engine/manual-review/${item_id}/availability`,
-    // RESOLVE_OVERFLOW: (item_id) =>
-    //   `/api/v1/admin/timetable/engine/manual-review/${item_id}/overflow`,
-    // RESOLVE_CHOOSE_OCCURRENCES: (item_id) =>
-    //   `/api/v1/admin/timetable/engine/manual-review/${item_id}/choose-occurrences`,
     RESOLVE_UNPLACED: (item_id) =>
       `/api/v1/admin/timetable/engine/manual-review/${item_id}/unplaced`,
     MANUAL_REVIEW_MINOR_OE_AVAILABILITY: (item_id) =>
@@ -159,5 +155,12 @@ export const API_PATHS = {
     ACTIVE_SESSION: "/api/v1/timetable/active-session",
     SCHEDULE: "/api/v1/timetable/schedule",
     SLOTS: "/api/v1/timetable/slots",
+  },
+  FEEDBACK: {
+    SUBMIT: "/api/v1/student/feedback",
+    MY_FEEDBACK: "/api/v1/student/feedback/my-feedback",
+    ADMIN_GET_ALL: "/api/v1/admin/feedback",
+    ADMIN_UPDATE_STATUS: (id) => `/api/v1/admin/feedback/${id}/status`,
+    ADMIN_DELETE: (id) => `/api/v1/admin/feedback/${id}`,
   },
 };
