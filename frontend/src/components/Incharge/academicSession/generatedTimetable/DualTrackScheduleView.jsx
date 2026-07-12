@@ -3,6 +3,21 @@
 //   • Lab blocks are draggable (swap with other lab blocks or theory cells)
 //   • Clicking an empty theory cell opens a slot picker
 //   • Clicking an occupied cell (non-BREAK) opens the picker to reassign or clear
+//
+// CHANGED (scoping fix — manual-review changes stay out of the Schedule tab):
+// This view previously rendered a cell's manual_entries directly (fuchsia
+// "M" pills) and hidden_assignment_ids as an amber dot, so anything a
+// Review-tab resolution touched leaked straight into the main Schedule tab.
+// That's now removed entirely. manual_entries / hidden_assignment_ids only
+// ever surface in InstituteView's per-batch rows and the Review tab itself
+// — the Schedule tab shows exactly what the engine generated / what's been
+// explicitly re-picked via the slot picker here, nothing else.
+//
+// A cell carrying manual_entries or hidden_assignment_ids is also LOCKED in
+// this view now — not draggable, not clickable — so a generic Schedule-tab
+// edit can never silently strand or corrupt a placement the admin made via
+// Manual Review. It gets a small grey dot + tooltip pointing at Review/
+// Institute instead.
 import React, { useState, useCallback, useRef } from "react";
 import { FlaskConical, Clock, Zap, X, GripVertical } from "lucide-react";
 import {
@@ -173,6 +188,11 @@ const DualTrackScheduleView = ({
   };
 
   // ── render theory cell ────────────────────────────────────────────────────
+  // CHANGED (scoping fix): manual_entries / hidden_assignment_ids are no
+  // longer rendered here — this view now shows ONLY what SlotPill resolves
+  // from slot_name. Cells carrying manual-review data are locked (no drag,
+  // no click) so a generic Schedule-tab edit can't touch them; they get a
+  // small grey dot instead, pointing the admin at Review/Institute.
 
   const renderTheoryCell = (cell, day, track) => {
     if (!cell) {
@@ -196,39 +216,52 @@ const DualTrackScheduleView = ({
     const isOver = dragOver?.key === key;
     const name = cell.slot_name;
     const isBreak = name === "BREAK";
+    const isReviewLocked =
+      (cell.manual_entries?.length ?? 0) > 0 ||
+      (cell.hidden_assignment_ids?.length ?? 0) > 0;
     const isDraggingSelf =
       dragSrc?.type === "theory" &&
       dragSrc.day === day &&
       dragSrc.track === track &&
       dragSrc.pi === pi;
 
+    const canEditHere = editMode && !isBreak && !isReviewLocked;
+
     return (
       <td
         key={pi}
         className={[
           "border border-gray-100 dark:border-gray-800 px-1 py-1 transition-colors",
-          editMode && !isBreak ? "cursor-pointer" : "",
+          canEditHere ? "cursor-pointer" : "",
+          isReviewLocked && editMode ? "cursor-not-allowed" : "",
           isOver && editMode ? "bg-gray-100 dark:bg-gray-800/60" : "",
           isDraggingSelf ? "opacity-40" : "",
         ].join(" ")}
-        draggable={editMode && !!name && !isBreak}
+        title={
+          isReviewLocked && editMode
+            ? "Placed/edited via Manual Review — change it from the Review or Institute tab instead"
+            : undefined
+        }
+        draggable={editMode && !!name && !isBreak && !isReviewLocked}
         onDragStart={
-          editMode && !isBreak
+          editMode && !!name && !isBreak && !isReviewLocked
             ? () => setDragSrc({ type: "theory", day, track, pi })
             : undefined
         }
         onDragOver={
-          editMode
+          canEditHere
             ? (e) => {
                 e.preventDefault();
                 setDragOver({ key });
               }
             : undefined
         }
-        onDragLeave={editMode ? () => setDragOver(null) : undefined}
-        onDrop={editMode ? () => handleTheoryDrop(day, track, pi) : undefined}
+        onDragLeave={canEditHere ? () => setDragOver(null) : undefined}
+        onDrop={
+          canEditHere ? () => handleTheoryDrop(day, track, pi) : undefined
+        }
         onDragEnd={
-          editMode
+          canEditHere
             ? () => {
                 setDragSrc(null);
                 setDragOver(null);
@@ -236,17 +269,23 @@ const DualTrackScheduleView = ({
             : undefined
         }
         onClick={
-          editMode && !isBreak
-            ? (e) => handleCellClick(e, day, track, pi)
-            : undefined
+          canEditHere ? (e) => handleCellClick(e, day, track, pi) : undefined
         }
       >
-        <SlotPill
-          name={name}
-          subLabel={name === "G" ? "Minor" : name === "H" ? "OE" : ""}
-          editMode={editMode}
-          isDragOver={isOver}
-        />
+        <div className="relative">
+          {isReviewLocked && editMode && (
+            <span
+              title="Placed via Manual Review — locked here"
+              className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-gray-400 dark:bg-gray-500 z-10"
+            />
+          )}
+          <SlotPill
+            name={name}
+            subLabel={name === "G" ? "Minor" : name === "H" ? "OE" : ""}
+            editMode={canEditHere}
+            isDragOver={isOver}
+          />
+        </div>
       </td>
     );
   };
@@ -336,6 +375,13 @@ const DualTrackScheduleView = ({
           {meta?.generation_time_ms && <span>{meta.generation_time_ms}ms</span>}
         </div>
       )}
+
+      {/* CHANGED — legend no longer advertises "M" pills / amber dots (those
+          don't render in this view anymore). Just explains the lock dot. */}
+      <div className="flex items-center gap-2 text-[10px] text-gray-400 dark:text-gray-500">
+        <span className="w-2 h-2 rounded-full bg-gray-400 dark:bg-gray-500" />
+        Locked — placed via Manual Review (see Review / Institute tab)
+      </div>
 
       {/* Table */}
       <div className="overflow-x-auto rounded-lg border border-gray-100 dark:border-gray-800">

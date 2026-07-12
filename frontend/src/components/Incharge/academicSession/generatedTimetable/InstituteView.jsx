@@ -1,19 +1,31 @@
 // InstituteView.jsx
 //
-// CHANGED: `scheduleData.track2_batches` no longer exists on the backend
-// (the old lab_count >= 3 heuristic is gone — see timetableScheduleModel.js).
-// Track is now an admin-chosen per-(day, batch) projection stored in
+// `scheduleData.track2_batches` no longer exists on the backend (the old
+// lab_count >= 3 heuristic is gone — see timetableScheduleModel.js). Track
+// is an admin-chosen per-(day, batch) projection stored in
 // scheduleData.track_assignments (falls back to
 // scheduleData.suggested_track_assignments as a hint, then defaults to
 // track 1), keyed by batch_id, not batch_name. We resolve batch_name ->
 // batch_id from slotsData since that's the only place both are available
 // together.
 //
-// NEW: the T1/T2 badge is now a clickable toggle. Clicking it PATCHes
+// The T1/T2 badge is a clickable toggle. Clicking it PATCHes
 // track_assignments via adminStore.setBatchTrack — a pure display
 // projection, never triggers regeneration or rescoring (decision #6).
 // Toggle only ever renders on a day that actually has a track-2
 // arrangement (Monday/Tuesday/Thursday when the skeleton produced one).
+//
+// CHANGED: theory-cell entries are now resolved via the shared
+// resolveCellEntries util instead of a raw slotMap[cell.slot_name] lookup.
+// This means:
+//   - a course manually placed via overflow resolution (cell.manual_entries)
+//     now actually shows up here, instead of only in the Review tab.
+//   - an occurrence a batch was un-selected from via choose_occurrences
+//     (cell.hidden_assignment_ids) correctly disappears for THAT batch only
+//     — every other batch sharing the label on that day is unaffected,
+//     since the underlying GeneratedSlot doc was never touched.
+// Manually-placed entries get the same small "M" badge as
+// BatchTimetableGrid so it reads consistently across views.
 import React, { useState, useMemo } from "react";
 import {
   DAYS,
@@ -29,6 +41,7 @@ import {
   resolveBatchTrack,
   buildBatchIdByName,
 } from "../../../../utils/resolveBatchTrack";
+import { resolveCellEntries, isManualEntry } from "./resolveCellEntries";
 import useAdminStore from "../../../../store/useAdminStore";
 
 // Days that support a track-2 arrangement. Must match what the skeleton
@@ -38,6 +51,11 @@ import useAdminStore from "../../../../store/useAdminStore";
 // the skeleton — flagged separately, should be fixed there too so a
 // Thursday PATCH can't silently set an unrenderable track assignment.
 const TOGGLE_DAYS = new Set(["Monday", "Tuesday"]);
+
+// Same fixed treatment used in BatchTimetableGrid for entries that came
+// from cell.manual_entries rather than a shared GeneratedSlot label.
+const MANUAL_COLOR =
+  "bg-fuchsia-50 dark:bg-fuchsia-900/20 text-fuchsia-700 dark:text-fuchsia-300 border-fuchsia-200 dark:border-fuchsia-800";
 
 // ── FilterSelect ──────────────────────────────────────────────────────────────
 const FilterSelect = ({ label, value, onChange, options, colorClass }) => {
@@ -223,14 +241,10 @@ const InstituteView = ({ scheduleData, slotsData }) => {
   };
 
   // ── shared cell helpers ─────────────────────────────────────────────────────
-  const getEntryForBatchPeriod = (batch, cell) => {
-    if (!cell?.slot_name || cell.slot_name === "BREAK") return null;
-    const entries = slotMap[cell.slot_name] ?? [];
-    return (
-      entries.find((e) => (e.batch_names ?? e.batches ?? []).includes(batch)) ??
-      null
-    );
-  };
+  // CHANGED: delegates to resolveCellEntries so manual_entries and
+  // hidden_assignment_ids are respected consistently with every other view.
+  const getEntryForBatchPeriod = (batch, cell) =>
+    resolveCellEntries(cell, slotMap, batch);
 
   const getLabEntry = (labSlotName, batch) => {
     const slot = slotsData?.slots?.find((s) => s.slot_name === labSlotName);
@@ -385,16 +399,27 @@ const InstituteView = ({ scheduleData, slotsData }) => {
         return emptyCell(pi);
       }
 
+      const manual = cell ? isManualEntry(cell, entry) : false;
       const code = entry.course_code ?? entry.course ?? "—";
       const fac = entry.faculty_code ?? entry.faculty ?? "";
-      const color = slotColor(name);
+      const color = manual ? MANUAL_COLOR : slotColor(name);
 
       return (
         <td
           key={pi}
           className="border border-gray-100 dark:border-gray-700 px-1 py-1"
         >
-          <div className={`rounded-md border px-1.5 py-1 text-center ${color}`}>
+          <div
+            className={`rounded-md border px-1.5 py-1 text-center relative ${color}`}
+          >
+            {manual && (
+              <span
+                title="Manually placed"
+                className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 flex items-center justify-center rounded-full bg-fuchsia-500 text-white text-[8px] font-bold leading-none"
+              >
+                M
+              </span>
+            )}
             <p className="text-[11px] font-bold leading-none">{code}</p>
             {fac && (
               <p className="text-[9px] mt-0.5 leading-none opacity-60">{fac}</p>

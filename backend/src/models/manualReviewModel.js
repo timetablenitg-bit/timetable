@@ -3,12 +3,21 @@
 // Holds anything slot_generator.py couldn't place automatically:
 //
 //  - "overflow": a course (or the excess portion of a synced_with group)
-//    needs MORE sessions/week than any single skeleton label can offer.
-//    Admin manually assigns each excess session to a specific day/period.
+//    needs MORE sessions/week than any single skeleton label can offer, OR
+//    a tutorial-classified course (rule 1, always admin-discretion).
+//    Admin manually assigns each excess session to any free/shared_ok cell.
 //
 //  - "choose_occurrences": a course (or a synced_with group member with
 //    a shortfall) needs FEWER occurrences than the label it landed in
 //    provides. Admin picks which N of the label's M days to actually use.
+//
+//  - "unplaced" (NEW): a course (or lab) got ZERO placement — no eligible
+//    skeleton label had room for it at all (typically: batch has more
+//    courses than the 6 regular slots can hold). Distinct from "overflow"
+//    because the admin's only real option here is to squeeze it into an
+//    otherwise-empty minor(G)/OE(H) period at their discretion — see
+//    resolveUnplacedItem / computeMinorOeAvailability. Resolving this does
+//    NOT go through the general "place anywhere free" overflow flow.
 //
 // One document per generation run per assignment (a single
 // CourseAssignment could in principle have both an overflow portion and
@@ -34,7 +43,7 @@ const manualReviewItemSchema = new mongoose.Schema(
 
     kind: {
       type: String,
-      enum: ["overflow", "choose_occurrences"],
+      enum: ["overflow", "choose_occurrences", "unplaced"],
       required: true,
     },
 
@@ -44,7 +53,9 @@ const manualReviewItemSchema = new mongoose.Schema(
       default: "pending",
     },
 
-    // For "overflow": how many extra sessions need manual placement.
+    // For "overflow" and "unplaced": how many sessions need manual placement.
+    // For "unplaced" this is always the assignment's FULL sessions_per_week
+    // (nothing got placed at all).
     sessions_needed: { type: Number, default: 0 },
 
     // For "choose_occurrences": the anchor label's available days, and
@@ -56,11 +67,19 @@ const manualReviewItemSchema = new mongoose.Schema(
     // Filled in once the admin resolves the item.
     resolution: {
       // overflow: [{ day, period_index, track }]
+      // unplaced: [{ day, period_index, track, slot_type }] — slot_type is
+      // 'minor' or 'oe', period_index/track are resolved server-side from
+      // the skeleton cell that label sits on for that day.
       placements: [
         {
           day: String,
           period_index: Number,
           track: { type: Number, default: 1 },
+          slot_type: {
+            type: String,
+            enum: ["minor", "oe", null],
+            default: null,
+          },
         },
       ],
       // choose_occurrences: which of available_days were kept

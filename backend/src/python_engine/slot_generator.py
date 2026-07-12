@@ -1,7 +1,49 @@
 """
-slot_generator.py  –  v5
+slot_generator.py  –  v7
 =============================================
-Changes from v4:
+Changes from v6:
+
+  * NEW (priority): courses/labs carrying 0 credits are not real courses
+    and are now filtered out at the very top of build_slots(), before
+    lab/non-lab splitting, before sync-group resolution, before anything
+    else touches them. They get NO slot and are NOT routed to
+    manual_review either — they simply vanish from this run, same as if
+    they'd never been submitted. (Previously a 0-credit assignment fell
+    through _classify()'s credit check to "theory" and competed for a
+    regular slot on equal footing with everything else, per the bug
+    report.)
+
+  * NEW (priority): 4-credit and 3-credit courses now get first pick of
+    slots. sync_groups (and, separately, lab placement groups) are sorted
+    so that any group containing a 4- or 3-credit course is placed before
+    groups that don't. This is a stable sort — groups of equal priority
+    keep their original relative order, so the existing rng-based shuffle
+    inside _rank_candidates (and the batch-size ordering for labs) still
+    does its job within each priority tier. This only changes iteration
+    order; every existing placement rule (adjacency, faculty/batch clash,
+    sync anchoring, shared_lab_with exclusion, TUT routing, etc.) is
+    unchanged and still applies exactly as before.
+
+Changes from v5 (still in effect):
+
+  * courses/labs that got ZERO automatic placement (no eligible label
+    had room at all — typically because a batch has more courses than the
+    6 regular slots can hold) are emitted as manual_review kind
+    "unplaced" instead of "overflow". This is a genuinely different admin
+    action: an unplaced course can ONLY be squeezed into an empty minor(G)/
+    OE(H) period at the admin's discretion (see manualReviewController.js::
+    resolveUnplacedItem), never into an arbitrary free regular cell the way
+    a partial overflow can. Two call sites changed:
+      - _place_group's "could not place the group at all" branch
+      - _place_labs's "no day worked for this group" branch
+    The TUT rule-1 branch (tutorial-classified courses, always routed to
+    manual review regardless of room) stays "overflow" — that's categorical
+    admin-discretion-by-design, not a capacity failure, and isn't
+    restricted to minor/OE.
+    The partial-overflow branch (spw > anchor_count, i.e. SOME placement
+    happened but not enough) is unchanged — still "overflow".
+
+Changes from v4 (still in effect):
 
   * BUGFIX: `shared_lab_with` anti-affinity was silently unenforced
     whenever the two linked assignments belonged to the SAME course.
@@ -95,7 +137,8 @@ Anything that can't be cleanly auto-placed (no label offers enough
 occurrences, or every candidate clashes) is NOT dropped silently and NOT
 overflowed into whatever special slot happens to be free. It's returned
 in `manual_review_items` for the Node layer to persist and surface to the
-admin (models/manualReviewModel.js).
+admin (models/manualReviewModel.js) — as "overflow", "choose_occurrences",
+or (v6+) "unplaced", depending on which failure mode it is.
 
 synced_with groups: resolved into connected components first. The whole
 group is anchored to the smallest-sessions_per_week member's label/days.
@@ -115,6 +158,11 @@ group is still checked like anything else. No room/resource concept
 exists anywhere else in this system (decision #1) — this exclusion map
 is effectively standing in for "same physical lab" without modeling labs
 as a resource generally.
+
+priority (v7): 4- and 3-credit courses are placed before everything
+else, and 0-credit "courses" are placed never (filtered out up front).
+This is purely an ordering/filtering change on top of the placement
+rules above — it does not add a new rule of its own.
 """
 
 import sys
@@ -129,6 +177,9 @@ LAB_LABEL = "LAB"
 # adjacency hits for a given faculty in a run are allowed (and penalized
 # in scorer.py); the 3rd+ is a hard block.
 MAX_FACULTY_ADJACENCY_VIOLATIONS = 2
+
+# Credit values that get first pick of slots (v7 priority rule).
+PRIORITY_CREDITS = (3, 4)
 
 # Label -> classification, purely by naming convention (matches the
 # default skeleton seeded from the old hardcoded TEMPLATE). If the admin
@@ -186,6 +237,15 @@ def _classify(a):
     if credits == 1:
         return "1credit"
     return "theory"
+
+def _credits(a):
+    """Course credit count, used for the 0-credit exclusion and the
+    3/4-credit priority rule (v7). Falls back to sessions_per_week the
+    same way _classify() does, so it stays consistent with how the rest
+    of the engine already infers credits when course_id.credits is
+    missing.
+    """
+    return int(a.get("course_id", {}).get("credits", a.get("sessions_per_week", 1)))
 
 def _sessions_per_week(a):
     return int(a.get("sessions_per_week") or a.get("course_id", {}).get("credits", 1))
@@ -246,6 +306,18 @@ def _resolve_sync_groups(assignments):
         groups.append([by_id[nid] for nid in component])
 
     return groups
+
+# ── priority ordering (v7) ───────────────────────────────────────────────────
+
+def _group_priority(group):
+    """0 = top priority (placed first), 1 = everything else.
+
+    A synced_with group gets top priority if ANY member is a 3- or
+    4-credit course — the group is anchored/placed as a unit anyway, so
+    if the admin bundled a priority course into the sync, the whole
+    bundle should get first pick of slots along with it.
+    """
+    return 0 if any(_credits(a) in PRIORITY_CREDITS for a in group) else 1
 
 # ── hard-constraint checks ───────────────────────────────────────────────────
 
@@ -369,6 +441,21 @@ def _overflow_item(a, sessions_needed, reason):
         "reason": reason,
     }
 
+def _unplaced_item(a, sessions_needed, reason):
+    """
+    v6 — for assignments that got ZERO automatic placement (no eligible
+    label had room at all, or no lab day worked). Distinct from
+    "overflow": the admin's only legal move here is a minor/OE override
+    (see manualReviewController.js::resolveUnplacedItem /
+    computeMinorOeAvailability.js), not "place anywhere free".
+    """
+    return {
+        "assignment_id": str(a["_id"]),
+        "kind": "unplaced",
+        "sessions_needed": sessions_needed,
+        "reason": reason,
+    }
+
 def _choose_occurrences_item(a, anchor_label, available_days, sessions_to_choose, reason):
     return {
         "assignment_id": str(a["_id"]),
@@ -419,13 +506,16 @@ def _place_group(group, classification, buckets, occurrence_counts,
 
     if placed_label is None:
         # Could not place the group at all -> everyone goes to manual
-        # review for their full session count.
+        # review as UNPLACED (not overflow, v6) — the admin's only real
+        # option here is a minor/OE override at their discretion, not
+        # "place anywhere free" (that's reserved for genuine overflow).
         for a in group:
-            manual_review.append(_overflow_item(
+            manual_review.append(_unplaced_item(
                 a, _sessions_per_week(a),
                 f"No skeleton label of type '{classification}' could fit "
                 f"{a['course_id']['course_code']} without a faculty/batch "
-                f"or adjacency clash.",
+                f"or adjacency clash. Can only be placed into an empty "
+                f"minor/OE period at admin discretion.",
             ))
         return
 
@@ -532,6 +622,11 @@ def _place_labs(lab_assignments, occurrence_counts, adjacency_map, manual_review
     other (see _build_lab_exclusion_map) — this is checked independently
     of, and in addition to, the normal faculty/batch clash and adjacency
     checks (decision #1, #4).
+
+    v7: groups are ordered priority-first (any 3- or 4-credit course in
+    the group jumps the queue), then by batch-size as before, so
+    priority labs get first pick of days just like priority theory
+    courses get first pick of labels.
     """
     lab_slots = {day: [] for day in LAB_DAYS}
     lab_label_days = [d for d in LAB_DAYS if occurrence_counts.get(LAB_LABEL, 0) > 0]
@@ -545,7 +640,7 @@ def _place_labs(lab_assignments, occurrence_counts, adjacency_map, manual_review
     placed_day_by_assignment = {}  # assignment_id -> day it landed on
 
     groups = _group_lab_assignments_by_course(lab_assignments, exclusion_map)
-    groups.sort(key=lambda g: -sum(len(a["batch_ids"]) for a in g))
+    groups.sort(key=lambda g: (_group_priority(g), -sum(len(a["batch_ids"]) for a in g)))
 
     for group in groups:
         shared_group_id = str(uuid.uuid4()) if len(group) > 1 else None
@@ -588,8 +683,10 @@ def _place_labs(lab_assignments, occurrence_counts, adjacency_map, manual_review
             for aid in group_ids:
                 placed_day_by_assignment[aid] = placed_day
         else:
+            # v6: no day worked at all for this group -> UNPLACED, not
+            # overflow. Same rationale as the theory-side branch above.
             for a in group:
-                manual_review.append(_overflow_item(
+                manual_review.append(_unplaced_item(
                     a, 1,
                     f"Lab {a['course_id']['course_code']} could not be placed "
                     f"on any of {', '.join(lab_label_days)} without a clash "
@@ -618,10 +715,22 @@ def build_slots(assignments, occurrence_counts, adjacency_map,
     # within one group's placement attempt.
     faculty_violation_counts = {}
 
+    # v7 priority rule: a 0-credit course is no course at all — filter it
+    # out before anything else (lab/non-lab split, sync resolution,
+    # placement, manual_review) ever sees it. No slot, no manual_review
+    # entry, nothing.
+    assignments = [a for a in assignments if _credits(a) != 0]
+
     lab_assignments = [a for a in assignments if _classify(a) == "lab"]
     non_lab = [a for a in assignments if _classify(a) != "lab"]
 
     sync_groups = _resolve_sync_groups(non_lab)
+
+    # v7 priority rule: 4- and 3-credit courses get first pick of slots.
+    # Stable sort — groups that are equally (non-)priority keep their
+    # original relative order, so this only changes which priority tier
+    # goes first, not the load-balancing behaviour within a tier.
+    sync_groups.sort(key=_group_priority)
 
     buckets = {}
     for group in sync_groups:
@@ -643,7 +752,10 @@ def build_slots(assignments, occurrence_counts, adjacency_map,
             # Rule 1: TUT slots are reserved for the admin's discretion.
             # The generator does not auto-place tutorial-classified
             # assignments at all, regardless of TUT's occurrence count —
-            # every member goes straight to manual review.
+            # every member goes straight to manual review. This stays
+            # "overflow" (not "unplaced") — it's categorical
+            # admin-discretion-by-design, not a capacity failure, and
+            # isn't restricted to minor/OE like a true unplaced item.
             for a in group:
                 manual_review.append(_overflow_item(
                     a, _sessions_per_week(a),

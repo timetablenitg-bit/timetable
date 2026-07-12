@@ -21,6 +21,8 @@ import {
   resolveOverflowItem,
   resolveChooseOccurrencesItem,
   getItemAvailability,
+  getMinorOeAvailability,
+  resolveUnplacedItem,
 } from "../../controllers/admin/manualReviewController.js";
 
 import {
@@ -56,6 +58,11 @@ router.patch(
   "/manual-review/:item_id/choose-occurrences",
   resolveChooseOccurrencesItem,
 );
+router.get(
+  "/manual-review/:item_id/minor-oe-availability",
+  getMinorOeAvailability,
+);
+router.patch("/manual-review/:item_id/unplaced", resolveUnplacedItem);
 
 // Slot editing (unchanged)
 router.put("/slots/:session_id", bulkUpdateSlots);

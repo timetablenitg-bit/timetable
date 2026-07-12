@@ -7,6 +7,20 @@
 //     call — no more separate "Save" vs "Save & Re-evaluate" (see EditToolbar).
 //   - Save warnings (adjacency/double-booking clashes introduced by a manual
 //     edit) are now displayed via EditToolbar's warnings prop.
+//
+// CHANGED (manual-review commit-to-grid model):
+//   - handleSwapCells / handleLabSwap now carry cell.manual_entries and
+//     cell.hidden_assignment_ids along with the swap. Previously only
+//     slot_name/slot_type/is_lab_anchor moved, so dragging a manually
+//     placed (overflow-resolved) cell in Schedule edit mode would strand
+//     its manual_entries at the OLD position and leave the destination
+//     cell showing nothing — a silent data loss on drag.
+//   - handleCellChange (the click-to-assign picker) now clears
+//     manual_entries/hidden_assignment_ids on the cell being reassigned.
+//     An explicit manual override through the picker should win outright
+//     over whatever a prior review resolution left there; leaving stale
+//     manual_entries behind after the admin picks a different label would
+//     make two different things "true" for the same cell at once.
 import React, {
   useEffect,
   useState,
@@ -152,6 +166,18 @@ const GeneratedTimetableTab = ({ session }) => {
         [s.slot_name, d.slot_name] = [d.slot_name, s.slot_name];
         [s.slot_type, d.slot_type] = [d.slot_type, s.slot_type];
         [s.is_lab_anchor, d.is_lab_anchor] = [d.is_lab_anchor, s.is_lab_anchor];
+        // NEW — manual-review data belongs to the CELL, not the label, so it
+        // has to travel with the swap just like slot_name does. Without
+        // this, a dragged manual placement gets left behind at the old
+        // position and the destination cell silently shows nothing.
+        [s.manual_entries, d.manual_entries] = [
+          d.manual_entries ?? [],
+          s.manual_entries ?? [],
+        ];
+        [s.hidden_assignment_ids, d.hidden_assignment_ids] = [
+          d.hidden_assignment_ids ?? [],
+          s.hidden_assignment_ids ?? [],
+        ];
         return next;
       });
     },
@@ -180,6 +206,18 @@ const GeneratedTimetableTab = ({ session }) => {
           sc.is_lab_anchor,
         ];
         [sc.lab_group, dc.lab_group] = [dc.lab_group, sc.lab_group];
+        // NEW — same rationale as handleSwapCells. Labs are never valid
+        // overflow/choose targets in practice, but if a review item ever
+        // did reference one, this keeps the swap correct rather than
+        // silently dropping the data.
+        [sc.manual_entries, dc.manual_entries] = [
+          dc.manual_entries ?? [],
+          sc.manual_entries ?? [],
+        ];
+        [sc.hidden_assignment_ids, dc.hidden_assignment_ids] = [
+          dc.hidden_assignment_ids ?? [],
+          sc.hidden_assignment_ids ?? [],
+        ];
       }
       return next;
     });
@@ -197,6 +235,13 @@ const GeneratedTimetableTab = ({ session }) => {
         cell.slot_name = slot_name ?? null;
         cell.slot_type = slot_type ?? "free";
         cell.is_lab_anchor = slot_type === "lab";
+        // NEW — an explicit reassignment through the picker supersedes
+        // whatever a prior manual-review resolution left on this cell.
+        // Leaving manual_entries/hidden_assignment_ids in place after the
+        // admin picks a different label would make the cell mean two
+        // contradictory things at once.
+        cell.manual_entries = [];
+        cell.hidden_assignment_ids = [];
         return next;
       });
     },

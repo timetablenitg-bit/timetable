@@ -120,6 +120,44 @@ const useManualReviewStore = create((set, get) => ({
       isFetchingAvailability: false,
       availabilityError: null,
     }),
+  // ── PATCH /manual-review/:item_id/unplaced ─────────────────────────────
+  resolveUnplaced: async (item_id, placements) => {
+    set({ isResolving: true, error: null });
+    try {
+      const response = await axiosInstance.patch(
+        API_PATHS.TIMETABLE.RESOLVE_UNPLACED(item_id),
+        { placements },
+      );
+      set((state) => ({
+        items: state.items.filter((i) => i._id !== item_id),
+        isResolving: false,
+      }));
+      return { ok: true, data: response.data.data };
+    } catch (error) {
+      const message =
+        error.response?.data?.message || "Failed to resolve unplaced item";
+      set({ error: message, isResolving: false });
+      return { ok: false, message };
+    }
+  },
+
+  // ── GET /manual-review/:item_id/minor-oe-availability ──────────────────
+  fetchMinorOeAvailability: async (item_id) => {
+    set({ isFetchingAvailability: true, availabilityError: null });
+    try {
+      const response = await axiosInstance.get(
+        API_PATHS.TIMETABLE.MANUAL_REVIEW_MINOR_OE_AVAILABILITY(item_id),
+      );
+      set({ isFetchingAvailability: false });
+      return { ok: true, data: response.data.data };
+    } catch (error) {
+      const message =
+        error.response?.data?.message ||
+        "Failed to fetch minor/OE availability";
+      set({ availabilityError: message, isFetchingAvailability: false });
+      return { ok: false, message };
+    }
+  },
 }));
 
 export default useManualReviewStore;

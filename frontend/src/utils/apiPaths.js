@@ -132,6 +132,17 @@ export const API_PATHS = {
       `/api/v1/admin/timetable/engine/slots/${session_id}/${slot_name}`,
     DELETE_SLOT: (session_id, slot_name) =>
       `/api/v1/admin/timetable/engine/slots/${session_id}/${slot_name}`,
+    MANUAL_REVIEW_LIST: "/api/v1/admin/timetable/engine/manual-review",
+    MANUAL_REVIEW_AVAILABILITY: (item_id) =>
+      `/api/v1/admin/timetable/engine/manual-review/${item_id}/availability`,
+    // RESOLVE_OVERFLOW: (item_id) =>
+    //   `/api/v1/admin/timetable/engine/manual-review/${item_id}/overflow`,
+    // RESOLVE_CHOOSE_OCCURRENCES: (item_id) =>
+    //   `/api/v1/admin/timetable/engine/manual-review/${item_id}/choose-occurrences`,
+    RESOLVE_UNPLACED: (item_id) =>
+      `/api/v1/admin/timetable/engine/manual-review/${item_id}/unplaced`,
+    MANUAL_REVIEW_MINOR_OE_AVAILABILITY: (item_id) =>
+      `/api/v1/admin/timetable/engine/manual-review/${item_id}/minor-oe-availability`,
   },
 
   STUDENT: {

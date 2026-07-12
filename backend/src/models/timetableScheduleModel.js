@@ -33,7 +33,44 @@ const gridCellSchema = new mongoose.Schema(
       default: "free",
     },
 
-    is_lab_anchor: { type: Boolean, default: false },
+    is_lab_anchor: { type: Boolean, default: false }, // NEW — manual-review additions. Entries placed directly on THIS cell,
+    // independent of slot_name/GeneratedSlot. Used for overflow placements:
+    // a one-off session that doesn't repeat elsewhere, so it has no business
+    // living in a shared label. Rendering merges these with whatever
+    // slot_name resolves to; other batches never see them because they're
+    // just not in this array.
+    manual_entries: {
+      type: [
+        {
+          assignment_id: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "CourseAssignment",
+          },
+          course_code: String,
+          faculty_code: String,
+          faculty_id: { type: mongoose.Schema.Types.ObjectId, ref: "Faculty" },
+          batch_names: [String],
+          batch_ids: [{ type: mongoose.Schema.Types.ObjectId, ref: "Batch" }],
+          component_type: { type: String, default: "lecture" },
+          // NEW — true when this entry came from resolving an "unplaced"
+          // item into a minor/OE slot rather than a plain overflow
+          // placement. Purely informational (lets the UI badge it
+          // distinctly if desired); resolution logic treats it the same
+          // as any other manual_entries item.
+          is_minor_oe_override: { type: Boolean, default: false },
+        },
+      ],
+      default: [],
+    },
+
+    // NEW — choose_occurrences suppression. assignment_ids listed here are
+    // hidden from this cell's slot_name-derived entries, even though the
+    // shared GeneratedSlot doc still lists them for the days that WERE
+    // chosen. Fixes the "blanks the whole label for every batch" limitation.
+    hidden_assignment_ids: {
+      type: [mongoose.Schema.Types.ObjectId],
+      default: [],
+    },
   },
   { _id: false },
 );
