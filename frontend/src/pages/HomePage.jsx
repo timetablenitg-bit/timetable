@@ -5,7 +5,7 @@ import { Menu, X, ArrowRight, Calendar, Clock, Zap } from "lucide-react";
 const HomePage = () => {
   // Inline the document title logic
   useEffect(() => {
-    document.title = "Get Started | ATTMS";
+    document.title = "Get Started | ATMS";
   }, []);
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -35,7 +35,7 @@ const HomePage = () => {
               <div className="h-12 w-12 relative overflow-hidden rounded-xl bg-white/5 p-1 border border-white/10 group-hover:border-cyan-500/50 transition-colors">
                 <img
                   src="images/NavbaarLogoWithNoBackgrond.png"
-                  alt="ATTMS Logo"
+                  alt="ATTS Logo"
                   className="w-full h-full object-contain"
                   onError={(e) => {
                     e.target.style.display = "none";
@@ -45,7 +45,7 @@ const HomePage = () => {
                 />
               </div>
               <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400 group-hover:from-cyan-400 group-hover:to-blue-400 transition-all duration-300">
-                ATTMS
+                ATMS
               </span>
             </a>
 
@@ -135,9 +135,9 @@ const HomePage = () => {
 
         {/* Subtitle */}
         <p className="max-w-2xl text-lg md:text-xl text-gray-400 mb-10 leading-relaxed">
-          The Academic Time Table Management System (ATTMS) automates
-          complexity. Create conflict-free schedules, manage resources, and
-          optimize academic time with AI-driven precision.
+          The Academic Timetable Management System (ATMS) automates complexity.
+          Create conflict-free schedules, manage resources, and optimize
+          academic time with AI-driven precision.
         </p>
 
         {/* CTA Buttons */}
