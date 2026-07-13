@@ -1,4 +1,3 @@
-// components/AddCourseModal/CourseCSVEntry.jsx
 import React from "react";
 
 const CourseCSVEntry = ({
@@ -17,15 +16,15 @@ const CourseCSVEntry = ({
         <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
           Format:{" "}
           <code className="bg-gray-100 dark:bg-slate-800 px-2 py-1 rounded text-emerald-600 dark:text-emerald-400">
-            Course Code, Course Name, Semester, Credits, Type, Department,
-            Nature, L, T, P
+            Course Code, Course Name, Semester, Credits, Type (THEORY/LAB),
+            Department, Nature, L, T, P
           </code>
         </p>
         <textarea
           value={csvData}
           onChange={(e) => setCsvData(e.target.value)}
           rows={10}
-          placeholder={`Example:\nCS250, Database Systems, 4, 4, Theory, CSE, CORE, 3, 1, 0\nCS255, Database Systems Lab, 4, 2, Lab, CSE, CORE, 0, 0, 3\nCS260, Operating Systems, 5, 4, Theory, CSE, CORE, 3, 1, 0`}
+          placeholder={`Example:\nCS250, Database Systems, 4, 4, THEORY, CSE, CORE, 3, 1, 0\nCS255, Database Systems Lab, 4, 2, LAB, CSE, CORE, 0, 0, 3\nCS260, Operating Systems, 5, 4, THEORY, CSE, CORE, 3, 1, 0`}
           className="w-full h-[290px] px-4 py-2 border border-gray-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 focus:border-transparent resize-none transition-all duration-200 hover:shadow-lg"
         />
       </div>

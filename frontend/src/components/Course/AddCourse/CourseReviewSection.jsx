@@ -1,4 +1,3 @@
-// components/AddCourseModal/CourseReviewSection.jsx
 import React, { useState } from "react";
 import {
   Edit2,
@@ -11,6 +10,22 @@ import {
 import { toast } from "react-toastify";
 import CustomDropdown from "../../../ui/CustomDropdown";
 
+const DEPARTMENTS = ["CSE", "ECE", "EEE", "CVE", "MCE", "APS", "HSS"];
+const NATURES = ["CORE", "MINOR", "ELECTIVE", "PROJECT", "SEMINAR"];
+
+const emptyEdit = {
+  course_code: "",
+  course_name: "",
+  semester_offered: "",
+  credits: "",
+  course_type: "",
+  department: "",
+  nature: "",
+  lecture: "",
+  tutorial: "",
+  practical: "",
+};
+
 const CourseReviewSection = ({
   courseList,
   onUpdate,
@@ -20,18 +35,7 @@ const CourseReviewSection = ({
   isSubmitting,
 }) => {
   const [editingIndex, setEditingIndex] = useState(null);
-  const [editFormData, setEditFormData] = useState({
-    courseCode: "",
-    courseName: "",
-    semester: "",
-    credits: "",
-    type: "",
-    department: "",
-    nature: "",
-    l: "",
-    t: "",
-    p: "",
-  });
+  const [editFormData, setEditFormData] = useState(emptyEdit);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
 
@@ -39,6 +43,7 @@ const CourseReviewSection = ({
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
   const currentCourses = courseList.slice(startIndex, endIndex);
+  const isLab = editFormData.course_type === "LAB";
 
   const handleEdit = (index) => {
     setEditingIndex(index);
@@ -47,8 +52,8 @@ const CourseReviewSection = ({
 
   const handleUpdate = () => {
     if (
-      !editFormData.courseCode ||
-      !editFormData.courseName ||
+      !editFormData.course_code ||
+      !editFormData.course_name ||
       !editFormData.credits
     ) {
       toast.error("Course Code, Name, and Credits are required!");
@@ -59,18 +64,7 @@ const CourseReviewSection = ({
       id: courseList[editingIndex].id,
     });
     setEditingIndex(null);
-    setEditFormData({
-      courseCode: "",
-      courseName: "",
-      semester: "",
-      credits: "",
-      type: "",
-      department: "",
-      nature: "",
-      l: "",
-      t: "",
-      p: "",
-    });
+    setEditFormData(emptyEdit);
   };
 
   const handleDelete = (index) => {
@@ -101,7 +95,6 @@ const CourseReviewSection = ({
 
   return (
     <div className="space-y-6">
-      {/* Stats Bar */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 p-4 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 rounded-xl border border-emerald-200 dark:border-emerald-800">
         <div>
           <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
@@ -131,7 +124,6 @@ const CourseReviewSection = ({
         </div>
       </div>
 
-      {/* Edit Form */}
       {editingIndex !== null && (
         <div className="bg-white dark:bg-slate-800 rounded-xl border border-emerald-200 dark:border-emerald-800 p-6">
           <h3 className="text-lg font-semibold text-slate-800 dark:text-white mb-4">
@@ -144,11 +136,11 @@ const CourseReviewSection = ({
               </label>
               <input
                 type="text"
-                value={editFormData.courseCode}
+                value={editFormData.course_code}
                 onChange={(e) =>
                   setEditFormData({
                     ...editFormData,
-                    courseCode: e.target.value,
+                    course_code: e.target.value,
                   })
                 }
                 className="w-full px-4 py-2 border border-gray-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -160,11 +152,11 @@ const CourseReviewSection = ({
               </label>
               <input
                 type="text"
-                value={editFormData.courseName}
+                value={editFormData.course_name}
                 onChange={(e) =>
                   setEditFormData({
                     ...editFormData,
-                    courseName: e.target.value,
+                    course_name: e.target.value,
                   })
                 }
                 className="w-full px-4 py-2 border border-gray-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -176,9 +168,12 @@ const CourseReviewSection = ({
               </label>
               <input
                 type="number"
-                value={editFormData.semester}
+                value={editFormData.semester_offered}
                 onChange={(e) =>
-                  setEditFormData({ ...editFormData, semester: e.target.value })
+                  setEditFormData({
+                    ...editFormData,
+                    semester_offered: e.target.value,
+                  })
                 }
                 className="w-full px-4 py-2 border border-gray-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
@@ -202,10 +197,10 @@ const CourseReviewSection = ({
                 Type
               </label>
               <CustomDropdown
-                value={editFormData.type}
-                options={["Theory", "Lab"]}
+                value={editFormData.course_type}
+                options={["THEORY", "LAB"]}
                 onChange={(val) =>
-                  setEditFormData({ ...editFormData, type: val })
+                  setEditFormData({ ...editFormData, course_type: val })
                 }
               />
             </div>
@@ -215,7 +210,7 @@ const CourseReviewSection = ({
               </label>
               <CustomDropdown
                 value={editFormData.nature}
-                options={["CORE", "MINOR", "ELECTIVE", "PROJECT", "SEMINAR"]}
+                options={NATURES}
                 onChange={(val) =>
                   setEditFormData({ ...editFormData, nature: val })
                 }
@@ -225,58 +220,68 @@ const CourseReviewSection = ({
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                 Department
               </label>
-              <input
-                type="text"
+              <CustomDropdown
                 value={editFormData.department}
-                onChange={(e) =>
-                  setEditFormData({
-                    ...editFormData,
-                    department: e.target.value,
-                  })
+                options={DEPARTMENTS}
+                onChange={(val) =>
+                  setEditFormData({ ...editFormData, department: val })
                 }
-                className="w-full px-4 py-2 border border-gray-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
             <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  L
-                </label>
-                <input
-                  type="number"
-                  value={editFormData.l}
-                  onChange={(e) =>
-                    setEditFormData({ ...editFormData, l: e.target.value })
-                  }
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  T
-                </label>
-                <input
-                  type="number"
-                  value={editFormData.t}
-                  onChange={(e) =>
-                    setEditFormData({ ...editFormData, t: e.target.value })
-                  }
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  P
-                </label>
-                <input
-                  type="number"
-                  value={editFormData.p}
-                  onChange={(e) =>
-                    setEditFormData({ ...editFormData, p: e.target.value })
-                  }
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
+              {isLab ? (
+                <div className="col-span-3">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    P
+                  </label>
+                  <input
+                    type="number"
+                    value={editFormData.practical}
+                    onChange={(e) =>
+                      setEditFormData({
+                        ...editFormData,
+                        practical: e.target.value,
+                      })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                      L
+                    </label>
+                    <input
+                      type="number"
+                      value={editFormData.lecture}
+                      onChange={(e) =>
+                        setEditFormData({
+                          ...editFormData,
+                          lecture: e.target.value,
+                        })
+                      }
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                      T
+                    </label>
+                    <input
+                      type="number"
+                      value={editFormData.tutorial}
+                      onChange={(e) =>
+                        setEditFormData({
+                          ...editFormData,
+                          tutorial: e.target.value,
+                        })
+                      }
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                </>
+              )}
             </div>
           </div>
           <div className="flex gap-3 pt-6">
@@ -289,18 +294,7 @@ const CourseReviewSection = ({
             <button
               onClick={() => {
                 setEditingIndex(null);
-                setEditFormData({
-                  courseCode: "",
-                  courseName: "",
-                  semester: "",
-                  credits: "",
-                  type: "",
-                  department: "",
-                  nature: "",
-                  l: "",
-                  t: "",
-                  p: "",
-                });
+                setEditFormData(emptyEdit);
               }}
               className="px-4 py-2 border border-gray-300 dark:border-slate-700 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
             >
@@ -310,7 +304,6 @@ const CourseReviewSection = ({
         </div>
       )}
 
-      {/* Courses Table */}
       {editingIndex === null && (
         <div className="border border-gray-200 dark:border-slate-800 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
@@ -356,13 +349,13 @@ const CourseReviewSection = ({
                       {startIndex + idx + 1}
                     </td>
                     <td className="px-4 py-3 text-sm font-medium text-slate-900 dark:text-white">
-                      {course.courseCode}
+                      {course.course_code}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-300">
-                      {course.courseName}
+                      {course.course_name}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-300">
-                      {course.semester}
+                      {course.semester_offered}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-300">
                       {course.credits}
@@ -370,12 +363,12 @@ const CourseReviewSection = ({
                     <td className="px-4 py-3 text-sm">
                       <span
                         className={`px-2 py-1 rounded text-xs font-medium ${
-                          course.type === "Lab"
+                          course.course_type === "LAB"
                             ? "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"
                             : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
                         }`}
                       >
-                        {course.type}
+                        {course.course_type}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-300">
@@ -383,7 +376,7 @@ const CourseReviewSection = ({
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-300">
                       <span className="px-2 py-1 bg-gray-100 dark:bg-slate-800 rounded text-xs font-mono">
-                        {course.l}-{course.t}-{course.p}
+                        {course.lecture}-{course.tutorial}-{course.practical}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right text-sm font-medium">
@@ -408,7 +401,6 @@ const CourseReviewSection = ({
             </table>
           </div>
 
-          {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex items-center justify-between px-6 py-3 bg-gray-50 dark:bg-slate-800 border-t border-gray-200 dark:border-slate-700">
               <button

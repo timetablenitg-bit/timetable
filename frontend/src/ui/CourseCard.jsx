@@ -1,36 +1,51 @@
 import React from "react";
-import { Trash2, Edit3, BookOpen, Layers, Monitor, Award } from "lucide-react";
+import {
+  Trash2,
+  Edit3,
+  BookOpen,
+  Layers,
+  Monitor,
+  Award,
+  FlaskConical,
+  Presentation,
+} from "lucide-react";
+
+const NATURE_CONFIG = {
+  CORE: {
+    color:
+      "text-blue-600 bg-blue-50 dark:bg-blue-400/10 border-blue-100 dark:border-blue-400/20",
+    icon: BookOpen,
+  },
+  ELECTIVE: {
+    color:
+      "text-purple-600 bg-purple-50 dark:bg-purple-400/10 border-purple-100 dark:border-purple-400/20",
+    icon: Layers,
+  },
+  MINOR: {
+    color:
+      "text-amber-600 bg-amber-50 dark:bg-amber-400/10 border-amber-100 dark:border-amber-400/20",
+    icon: Award,
+  },
+  PROJECT: {
+    color:
+      "text-rose-600 bg-rose-50 dark:bg-rose-400/10 border-rose-100 dark:border-rose-400/20",
+    icon: FlaskConical,
+  },
+  SEMINAR: {
+    color:
+      "text-teal-600 bg-teal-50 dark:bg-teal-400/10 border-teal-100 dark:border-teal-400/20",
+    icon: Presentation,
+  },
+  default: {
+    color:
+      "text-slate-600 bg-slate-50 dark:bg-slate-400/10 border-slate-100 dark:border-slate-400/20",
+    icon: Award,
+  },
+};
 
 const CourseCard = ({ course, onEdit, onDelete }) => {
-  const getTypeConfig = (type) => {
-    const lowerType = type?.toLowerCase();
-    const configs = {
-      core: {
-        color:
-          "text-blue-600 bg-blue-50 dark:bg-blue-400/10 border-blue-100 dark:border-blue-400/20",
-        icon: BookOpen,
-      },
-      elective: {
-        color:
-          "text-purple-600 bg-purple-50 dark:bg-purple-400/10 border-purple-100 dark:border-purple-400/20",
-        icon: Layers,
-      },
-      lab: {
-        color:
-          "text-emerald-600 bg-emerald-50 dark:bg-emerald-400/10 border-emerald-100 dark:border-emerald-400/20",
-        icon: Monitor,
-      },
-      default: {
-        color:
-          "text-slate-600 bg-slate-50 dark:bg-slate-400/10 border-slate-100 dark:border-slate-400/20",
-        icon: Award,
-      },
-    };
-    return configs[lowerType] || configs.default;
-  };
-
-  const config = getTypeConfig(course.type);
-  const TypeIcon = config.icon;
+  const config = NATURE_CONFIG[course.nature] || NATURE_CONFIG.default;
+  const TypeIcon = course.course_type === "LAB" ? Monitor : config.icon;
 
   return (
     <div
@@ -40,13 +55,6 @@ const CourseCard = ({ course, onEdit, onDelete }) => {
       w-full max-w-[320px] cursor-default
       h-[210px] flex flex-col justify-between shrink-0"
     >
-      {/* CHANGES MADE ABOVE:
-          1. h-[210px]: Sets a strict fixed height.
-          2. flex flex-col: Allows us to use spacing utilities to pin the footer.
-          3. justify-between: Pushes the top content and bottom actions apart.
-          4. shrink-0: Prevents the parent flex container from squishing the card.
-      */}
-
       <div>
         {/* Top Section: Icon & Credits */}
         <div className="flex justify-between items-start mb-3">
@@ -81,11 +89,16 @@ const CourseCard = ({ course, onEdit, onDelete }) => {
 
       {/* Actions: Pinned to bottom via flex justify-between */}
       <div className="flex justify-between items-center pt-3 border-t border-slate-100 dark:border-slate-800/50">
-        <span
-          className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase border transition-colors duration-300 ${config.color}`}
-        >
-          {course.course_type || "Course"}
-        </span>
+        <div className="flex gap-1">
+          <span
+            className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase border transition-colors duration-300 ${config.color}`}
+          >
+            {course.nature || "Course"}
+          </span>
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded uppercase border text-slate-500 bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-700">
+            {course.course_type}
+          </span>
+        </div>
 
         <div className="flex gap-1">
           <button

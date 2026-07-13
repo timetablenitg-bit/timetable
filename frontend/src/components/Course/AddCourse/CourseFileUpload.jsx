@@ -1,4 +1,3 @@
-// components/AddCourseModal/CourseFileUpload.jsx
 import React from "react";
 import { Upload, FileText } from "lucide-react";
 
@@ -79,22 +78,26 @@ const CourseFileUpload = ({
                       className="hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors duration-200"
                     >
                       <td className="px-3 py-2 text-sm font-medium text-slate-900 dark:text-white">
-                        {course.courseCode}
+                        {course.course_code}
                       </td>
                       <td className="px-3 py-2 text-sm text-slate-700 dark:text-slate-300">
-                        {course.courseName}
+                        {course.course_name}
                       </td>
                       <td className="px-3 py-2 text-sm text-slate-700 dark:text-slate-300">
-                        {course.semester}
+                        {course.semester_offered}
                       </td>
                       <td className="px-3 py-2 text-sm text-slate-700 dark:text-slate-300">
                         {course.credits}
                       </td>
                       <td className="px-3 py-2 text-sm">
                         <span
-                          className={`px-2 py-1 rounded text-xs font-medium ${course.type === "Lab" ? "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300" : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"}`}
+                          className={`px-2 py-1 rounded text-xs font-medium ${
+                            course.course_type === "LAB"
+                              ? "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"
+                              : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                          }`}
                         >
-                          {course.type}
+                          {course.course_type}
                         </span>
                       </td>
                       <td className="px-3 py-2 text-sm text-slate-700 dark:text-slate-300">
