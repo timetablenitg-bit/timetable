@@ -135,7 +135,7 @@ const InchargeNavbaar = () => {
               className="flex items-center gap-3 pl-4 border-l border-gray-200 dark:border-gray-700 cursor-pointer group"
             >
               <span
-                className="text-sm font-medium text-gray-600 dark:text-gray-300 group-hover:text-blue-600 transition-colors max-w-[150px] truncate"
+                className="text-sm font-medium text-gray-600 dark:text-gray-300 group-hover:text-blue-600 transition-colors max-w-37.5 truncate"
                 title={authUser?.username || "My Profile"}
               >
                 {authUser?.username?.length > 15
@@ -171,7 +171,7 @@ const InchargeNavbaar = () => {
         <div
           className={`md:hidden overflow-hidden transition-all duration-300 ${
             isMobileMenuOpen
-              ? "max-h-[400px] opacity-100 mt-3"
+              ? "max-h-100 opacity-100 mt-3"
               : "max-h-0 opacity-0"
           }`}
         >
@@ -228,7 +228,7 @@ const InchargeNavbaar = () => {
       <Notification open={openNotification} setOpen={setOpenNotification} />
 
       <div
-        className={`fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 transition-all duration-300 ${
+        className={`fixed inset-0 z-100 flex items-center justify-center p-4 sm:p-6 transition-all duration-300 ${
           openProfile ? "visible" : "invisible pointer-events-none"
         }`}
       >
@@ -240,13 +240,13 @@ const InchargeNavbaar = () => {
         />
 
         <div
-          className={`relative w-full max-w-2xl transform transition-all duration-[600ms] ease-out ${
+          className={`relative w-full max-w-2xl transform transition-all duration-600 ease-out ${
             openProfile
               ? "opacity-100 scale-100 translate-y-0"
               : "opacity-0 scale-0 translate-y-10"
           }`}
         >
-          <div className="absolute -top-3 -right-3 sm:-top-4 sm:-right-4 z-[110]">
+          <div className="absolute -top-3 -right-3 sm:-top-4 sm:-right-4 z-110">
             <button
               onClick={() => setOpenProfile(false)}
               className="p-2 sm:p-2.5 bg-white dark:bg-slate-800 text-gray-700 dark:text-gray-300 rounded-full shadow-lg border border-gray-200 dark:border-slate-700 hover:bg-gray-100 dark:hover:bg-slate-700 transition-all active:scale-95 cursor-pointer"

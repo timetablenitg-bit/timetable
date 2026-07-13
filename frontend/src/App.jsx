@@ -15,6 +15,7 @@ import AcceptInvite from "./pages/AcceptInvite";
 import DocumentationPage from "./pages/DocumentationPage";
 import PublicRoute from "./components/PublicRoute";
 import NotFoundRedirect from "./components/NotFoundRedirect";
+import Documentation from "./pages/Documentation";
 // import GenerateTable from "./pages/GenerateTable";
 const App = () => {
   // 1. Pull the theme state from Zustand
@@ -62,7 +63,7 @@ const App = () => {
               </PublicRoute>
             }
           />
-          <Route path="/doc" element={<DocumentationPage />} />
+          <Route path="/doc" element={<Documentation />} />
           {/* <Route
             path="/signup"
             element={

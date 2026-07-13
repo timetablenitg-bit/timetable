@@ -51,8 +51,6 @@ const Incharge = () => {
         return <Course />;
       case "batch":
         return <Batch />;
-      case "room":
-        return <Room />;
       case "feedback":
         return <FeedbackList />;
       case "academicSession":
@@ -76,7 +74,6 @@ const Incharge = () => {
     { key: "course", label: "Course Management", icon: BookOpen },
     { key: "batch", label: "Batch Management", icon: Layers },
     { key: "feedback", label: "Student Feedback", icon: MessageSquare },
-    { key: "room", label: "Room Management", icon: DoorOpen },
     { key: "request", label: "Pending Requests", icon: ClipboardList },
   ];
 
