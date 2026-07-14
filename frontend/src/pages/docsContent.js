@@ -6,6 +6,7 @@
 //   id        - unique key, used for nav + deep linking
 //   title     - shown in sidebar + header
 //   icon      - a lucide-react icon name (string), mapped in Documentation.jsx
+//   visual    - key into VISUALS (docVisuals.jsx) for the illustrated preview
 //   summary   - one-line description shown under the title
 //   whatItDoes- short paragraph(s) — plain text or array of paragraphs
 //   steps     - array of { title, detail } — the "how to use it" walkthrough
@@ -17,6 +18,7 @@ export const docSections = [
     id: "getting-started",
     title: "Getting Started",
     icon: "Compass",
+    visual: "getting-started",
     summary: "What the Admin Panel is and how it's laid out.",
     whatItDoes:
       "The Admin Panel is where the department Incharge manages everything related to academic scheduling — faculty, courses, batches, timetables, and student feedback. Everything is organized into a sidebar of tools; only one tool is open at a time.",
@@ -45,6 +47,7 @@ export const docSections = [
     id: "overview",
     title: "Overview",
     icon: "LayoutDashboard",
+    visual: "overview",
     summary: "Your at-a-glance dashboard of the whole department.",
     whatItDoes:
       "The Overview tab is a read-only dashboard. It summarizes faculty, courses, batches, academic sessions, and rooms so you can quickly check the health of the department's data without digging through each individual tool.",
@@ -83,39 +86,93 @@ export const docSections = [
     id: "generate-timetable",
     title: "Generate Timetable",
     icon: "CalendarDays",
+    visual: "generate-timetable",
     summary:
-      "Create and manage academic sessions, then generate a timetable for one.",
-    whatItDoes:
-      "An academic session represents a term (e.g. Odd Semester 2026). Timetables are generated per session. Only one session should typically be marked active at a time — that's the one shown on the public/student-facing Time Table.",
+      "The full pipeline: create a session, assign courses, generate, then review the result.",
+    whatItDoes: [
+      "An academic session represents a term (e.g. Odd Semester 2026). Every generated timetable belongs to exactly one session, and generation itself happens in a dedicated workspace you open by selecting a session from the list.",
+      "That workspace has four tabs that run in order: Course Registration (check what students have registered for), Course Assignments (tell the system which faculty teaches which course to which batch), Finalized Assignments (review everything, then trigger generation), and Generated Timetable (the result — view, resolve, edit, export).",
+    ],
     steps: [
       {
-        title: "Create a session",
+        title: "1. Create or open a session",
         detail:
-          "Click 'Add Session', fill in the academic year and term (Odd/Even), and save.",
+          "Click 'Add Session' and fill in the academic year and term (Odd/Even), or select an existing session from the list to open its workspace. Use the search bar to filter sessions by name.",
+        visual: "gt-create-session",
       },
       {
-        title: "Search existing sessions",
-        detail: "Use the search bar to filter sessions by name.",
+        title: "2. Course Registration — check student registrations",
+        detail:
+          "This tab is read-only. It's grouped by batch, and shows how many students have completed registering their electives/backlog courses for the term versus how many haven't started. Use it to sanity-check before assigning courses — assigning against a batch with a lot of 'Not Started' students usually means it's too early to finalize.",
+        visual: "gt-course-registration",
       },
       {
-        title: "Edit or delete a session",
+        title: "3. Course Assignments — assign faculty to courses",
         detail:
-          "Open a session from the list to edit its details, or delete it if it was created by mistake. Deleting a session does not automatically delete its generated timetable data — double check before deleting.",
+          "Expand a batch card and add a row per course the batch takes: pick the course, pick the faculty (the faculty list is automatically filtered to the course's department), and pick the component type (Lecture / Lab / Tutorial). For elective slots, you must additionally pick the actual elective being taught — the slot itself isn't enough. Filter/sort batches by department or year using the toolbar above the list.",
+        visual: "gt-assignment-row",
       },
       {
-        title: "Generate the timetable",
+        title: "4. Linking shared or synced sessions",
         detail:
-          "Select a session to move into the academic-session workspace, where you assign courses, faculty, and rooms to time slots.",
+          "If two batches share one physical lab room at the same time, link the two rows using 'Shared Lab'. If a lecture is genuinely delivered once to two different batches at once (a combined slot), use 'Synced With' — this only works between two already-saved assignments in different batches, not two courses inside the same batch.",
+        visual: "gt-link-pickers",
+      },
+      {
+        title: "5. Save assignments",
+        detail:
+          "Click Save on a batch card once its rows are complete. A row won't save until it has both a course and a faculty (and, for elective slots, the elective itself); an empty batch with zero rows can't be saved either.",
+        visual: "gt-save-batch",
+      },
+      {
+        title: "6. Finalized Assignments — trigger generation",
+        detail:
+          "Open the Finalized Assignments tab to review everything that's been saved across all batches, then click 'Generate Timetable'. This is the step that actually runs the placement engine — editing Course Assignments afterwards does not update an already-generated timetable until you generate again.",
+        visual: "gt-finalized",
+      },
+      {
+        title: "7. Watch generation run",
+        detail:
+          "A progress modal walks through the engine's stages — fetching assignments, building the slot map, running the placement engine, scoring the result, and finalizing. This typically takes a few seconds; leave the tab open until it completes.",
+        visual: "gt-generation-modal",
+      },
+      {
+        title: "8. Generated Timetable — review the result",
+        detail:
+          "Once generation finishes, the Generated Timetable tab shows a quality Score badge and four sub-tabs: Schedule (the day/period grid), Slots (the raw slot list), Institute (a combined institute-wide view), and Review. Check the Review tab first — its badge shows how many items the engine couldn't place automatically (overflow sessions or elective 'choose one occurrence' conflicts) and need a manual decision.",
+        visual: "gt-result-tabs",
+      },
+      {
+        title: "9. Resolve manual review items",
+        detail:
+          "Each Review item lets you pick where an unplaced session should go. Items unlock in order — Pick Occurrences, then Unplaced, then Overflow — so later items only appear once earlier ones for that batch are cleared. Resolving an item edits the saved schedule directly; Schedule and Institute views refresh to reflect it.",
+        visual: "gt-manual-review",
+      },
+      {
+        title: "10. Manual edits (optional)",
+        detail:
+          "In Schedule or Slots view, click 'Edit' to drag-and-drop or click-to-reassign cells. Saving an edit always re-validates and rescores the timetable; if the edit introduces a clash (e.g. double-booking a faculty member), you'll see warnings and stay in edit mode until you either fix or accept them.",
+        visual: "gt-manual-edit",
+      },
+      {
+        title: "11. Export",
+        detail:
+          "Use the Excel icon in the header to export the current generated schedule once it has a generation ID (i.e. after at least one successful generation).",
+        visual: "gt-export",
       },
     ],
     notes: [
-      "Marking a new session active will change what students see under Time Table immediately.",
+      "Marking a session Active immediately changes what students see under Time Table — the system automatically deactivates whichever session was previously active, and it won't let you deactivate the only active session without activating another one first.",
+      "Deleting a session does not automatically delete its generated timetable data — double check before deleting.",
+      "If the Generated Timetable tab says 'No timetable generated yet', it means Finalized Assignments → Generate Timetable hasn't been run for this session — Course Assignments alone won't produce a schedule.",
+      "A non-zero pending count on the Review tab means some sessions are missing from the published schedule until you resolve them.",
     ],
   },
   {
     id: "time-table",
     title: "Time Table",
     icon: "Table",
+    visual: "time-table",
     summary: "View the published timetable for the active academic session.",
     whatItDoes:
       "This is a read view of the timetable currently generated for the active session — the same view students see for their batch. Use it to sanity-check the schedule after generating or editing it.",
@@ -127,13 +184,14 @@ export const docSections = [
       },
     ],
     notes: [
-      "If the timetable looks empty here but you know you generated one, check that the correct session is marked Active under Generate Timetable → Academic Sessions.",
+      "If the timetable looks empty here but you know you generated one, check that the correct session is marked Active under Generate Timetable → session list.",
     ],
   },
   {
     id: "faculty-directory",
     title: "Faculty Directory",
     icon: "Users",
+    visual: "faculty-directory",
     summary: "Manage the list of faculty members and their invite status.",
     whatItDoes:
       "This is the master list of faculty in the department. Faculty must exist here before they can be assigned to courses or timetable slots.",
@@ -154,12 +212,15 @@ export const docSections = [
           "Accepted = the faculty member has logged in and set up their account. Pending = an invite was sent but not yet accepted. Uninvited = no invite has been sent yet.",
       },
     ],
-    notes: [],
+    notes: [
+      "A faculty member's department determines which courses they'll show up as eligible for in Course Assignments — double check it's correct before assigning them to anything.",
+    ],
   },
   {
     id: "course-management",
     title: "Course Management",
     icon: "BookOpen",
+    visual: "course-management",
     summary: "Add, edit, and organize courses offered by the department.",
     whatItDoes:
       "Courses are defined here with a course code, nature (Core / Minor / Elective / Project / Seminar), and type (Theory / Lab). Courses created here become available for assignment when generating timetables.",
@@ -184,12 +245,15 @@ export const docSections = [
           "Click delete and confirm. If the course was never saved to the database (still pending), it's simply removed from the unsaved list.",
       },
     ],
-    notes: [],
+    notes: [
+      "Set weekly hours (lecture/tutorial/practical) accurately for each course — a course saved with 0 hours for a component can be assigned in Course Assignments without error, but the timetable engine has nothing to schedule for it and it will silently be missing from the generated timetable.",
+    ],
   },
   {
     id: "batch-management",
     title: "Batch Management",
     icon: "Layers",
+    visual: "batch-management",
     summary: "Manage student batches by department and semester.",
     whatItDoes:
       "A batch represents a group of students in a specific department and semester (e.g. CSE Semester 4). Batches are what timetable slots and rooms ultimately get assigned to.",
@@ -214,6 +278,7 @@ export const docSections = [
     id: "student-feedback",
     title: "Student Feedback",
     icon: "MessageSquare",
+    visual: "student-feedback",
     summary: "Review and triage feedback submitted by students.",
     whatItDoes:
       "Students can submit bug reports, suggestions, or general feedback (optionally with a star rating). This tool lets you review, filter, and update the status of each submission.",
@@ -241,6 +306,7 @@ export const docSections = [
     id: "pending-requests",
     title: "Pending Requests",
     icon: "ClipboardList",
+    visual: "pending-requests",
     summary: "Requests awaiting admin approval.",
     whatItDoes:
       "Placeholder section — details to be added once this tool's functionality is finalized.",
@@ -251,14 +317,25 @@ export const docSections = [
     id: "rules-policies",
     title: "Rules & Policies",
     icon: "ShieldCheck",
-    summary: "Department policies for using the admin panel.",
+    visual: "rules-policies",
+    summary: "Things that can break the app — read before you edit data.",
     whatItDoes:
-      "This section will hold access, data-handling, and process rules for admins. Add entries to the `rules` array below as they're finalized.",
+      "These are hard constraints baked into the system, not suggestions. Most 'the timetable looks wrong / empty / half-missing' problems trace back to one of these being skipped.",
     steps: [],
     notes: [],
     rules: [
-      // e.g. "Only department Incharges may be granted admin access.",
-      // "Never delete an academic session with a generated timetable without archiving it first.",
+      "Every course needs department and nature filled in — these are required fields; the course simply won't save without them.",
+      "Set a course's weekly hours (lecture/tutorial/practical) honestly. Hours default to 0, and a course with 0 hours for the component you assigned can still be added in Course Assignments — it will then be silently absent from the generated timetable instead of throwing an error.",
+      "A Course Assignment row needs both a course and a faculty to save. For elective slot rows, you also need to pick the actual elective — selecting only the slot itself leaves the row incomplete and it will be rejected on save.",
+      "You can't save a batch with zero assignment rows — 'assign at least one course' is enforced before the save call goes out.",
+      "The faculty picker for a row is filtered to the course's own department (plus the batch's department for semesters above 2). If the faculty you need doesn't appear, check their department in Faculty Directory before assuming Course Assignments is broken.",
+      "'Synced With' only links two DIFFERENT batches sharing one slot — it's not for combining two courses inside the same batch, and only works between assignments that have already been saved (not pending rows).",
+      "Only one academic session can be Active at a time. Activating a session automatically deactivates whatever was previously active, and you cannot deactivate the only active session without activating a replacement — this is enforced by the backend, not just the UI.",
+      "Generating a timetable reads from Finalized Assignments, not live edits. Changing Course Assignments after a timetable has been generated has no effect on the published schedule until you generate again.",
+      "Deleting an academic session does NOT delete its generated timetable data. Don't rely on deleting a session as a way to clear out a bad generation — archive or regenerate instead.",
+      "A generated timetable can have unresolved items in the Review tab (courses the engine couldn't place automatically). These are missing from the schedule students see until an admin resolves them — a non-zero Review badge is not cosmetic.",
+      "Manual grid edits (drag/drop or click-to-assign in Schedule/Slots edit mode) are re-validated and rescored on save. If Save returns warnings (e.g. a faculty double-booking), the edit stays open so you can see and fix it — don't assume a save with warnings is safe to walk away from.",
+      "Excel export requires a completed generation. The export button stays disabled until a generation ID exists for the session.",
     ],
   },
 ];
