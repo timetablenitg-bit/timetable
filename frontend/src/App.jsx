@@ -12,7 +12,6 @@ import Faculty from "./pages/Faculty";
 import Incharge from "./pages/Incharge";
 import Homepage from "./pages/HomePage";
 import AcceptInvite from "./pages/AcceptInvite";
-import DocumentationPage from "./pages/DocumentationPage";
 import PublicRoute from "./components/PublicRoute";
 import NotFoundRedirect from "./components/NotFoundRedirect";
 import Documentation from "./pages/Documentation";
@@ -41,7 +40,7 @@ const App = () => {
 
   return (
     <>
-      <div className="bg-gray-300 dark:bg-black min-h-screen md:min-h-[100dvh] w-screen">
+      <div className="bg-gray-300 dark:bg-black min-h-screen md:min-h-dvh w-screen">
         <ToastProvider />
 
         <Routes>

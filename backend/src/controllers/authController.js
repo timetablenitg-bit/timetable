@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
 import { Faculty } from "../models/facultyModel.js";
 import { sendInviteEmail } from "../utils/mailer.js";
+import { logAdminAction } from "../utils/adminLog.js";
 
 const client = new OAuth2Client(process.env.OAUTH_CLIENT_ID);
 
@@ -165,7 +166,7 @@ export const setUpProfile = async (req, res) => {
 
 export const getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId).select("-password");
+    const user = await User.findById(req.user.id).select("-password");
 
     if (!user) {
       return res.status(404).json({
@@ -410,6 +411,12 @@ export const inviteFaculty = async (req, res) => {
       },
       { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
     );
+    await logAdminAction({
+      admin: req.user.id,
+      action: "INVITE_FACULTY",
+      target: null,
+      details: { email: faculty.email, faculty_code: faculty.faculty_code },
+    });
 
     return res
       .status(200)

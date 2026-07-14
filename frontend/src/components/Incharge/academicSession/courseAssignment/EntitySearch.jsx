@@ -1,12 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Search, X } from "lucide-react";
+import DropdownPortal from "./DropdownPortal";
 
-// Generic "search + DEPT/ALL toggle + dropdown" picker.
-// CourseSearch and FacultySearch are thin wrappers around this with
-// entity-specific getKey/getQueryLabel/matches/renderOption functions.
 const EntitySearch = ({
-  pool, // department-scoped items
-  allPool = [], // full unscoped items (for the ALL toggle)
+  pool,
+  allPool = [],
   value,
   onChange,
   placeholder = "Search...",
@@ -21,6 +19,7 @@ const EntitySearch = ({
   const [open, setOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const wrapperRef = useRef(null);
+  const dropdownRef = useRef(null); // 🔥 portal content lives outside wrapperRef in the DOM
 
   useEffect(() => {
     setQuery(value ? getQueryLabel(value) : "");
@@ -28,9 +27,12 @@ const EntitySearch = ({
   }, [value]);
 
   useEffect(() => {
+    // 🔥 must check both the input box AND the portaled dropdown,
+    // since the dropdown is no longer a DOM descendant of wrapperRef
     const handler = (e) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target))
-        setOpen(false);
+      const inWrapper = wrapperRef.current?.contains(e.target);
+      const inDropdown = dropdownRef.current?.contains(e.target);
+      if (!inWrapper && !inDropdown) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -95,42 +97,45 @@ const EntitySearch = ({
         )}
       </div>
 
-      {open && query.length > 0 && (
-        <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl max-h-64 overflow-y-auto">
-          {filtered.length === 0 ? (
-            <div className="px-4 py-3 text-xs text-gray-400 italic">
-              {emptyLabel}
-              {!showAll && allPool.length > 0 && (
-                <button
-                  type="button"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    setShowAll(true);
-                  }}
-                  className="ml-1 text-emerald-500 underline"
-                >
-                  search all departments?
-                </button>
-              )}
-            </div>
-          ) : (
-            filtered.map((item) => (
+      <DropdownPortal
+        anchorRef={wrapperRef}
+        dropdownRef={dropdownRef}
+        open={open && query.length > 0}
+        className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl max-h-64 overflow-y-auto"
+      >
+        {filtered.length === 0 ? (
+          <div className="px-4 py-3 text-xs text-gray-400 italic">
+            {emptyLabel}
+            {!showAll && allPool.length > 0 && (
               <button
-                key={getKey(item)}
                 type="button"
-                onClick={() => {
-                  onChange(item);
-                  setQuery(getQueryLabel(item));
-                  setOpen(false);
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setShowAll(true);
                 }}
-                className="w-full text-left px-4 py-3 hover:bg-emerald-50 dark:hover:bg-gray-700 transition-colors border-b border-gray-100 dark:border-gray-700 last:border-0"
+                className="ml-1 text-emerald-500 underline"
               >
-                {renderOption(item)}
+                search all departments?
               </button>
-            ))
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        ) : (
+          filtered.map((item) => (
+            <button
+              key={getKey(item)}
+              type="button"
+              onClick={() => {
+                onChange(item);
+                setQuery(getQueryLabel(item));
+                setOpen(false);
+              }}
+              className="w-full text-left px-4 py-3 hover:bg-emerald-50 dark:hover:bg-gray-700 transition-colors border-b border-gray-100 dark:border-gray-700 last:border-0"
+            >
+              {renderOption(item)}
+            </button>
+          ))
+        )}
+      </DropdownPortal>
     </div>
   );
 };

@@ -11,6 +11,7 @@ import {
   DoorOpen,
   ClipboardList,
   MessageSquare,
+  ShieldCheck,
 } from "lucide-react";
 
 import Navbaar from "../components/Navbaar";
@@ -25,6 +26,7 @@ import Room from "../components/Room/Room";
 import AcademicSession from "../components/Incharge/academicSession/AcademicSession";
 import { useAuthStore } from "../store/useAuthStore";
 import FeedbackList from "../components/Incharge/FeedbackList";
+import AdminManagement from "../components/Incharge/AdminManagement";
 
 const Incharge = () => {
   const [openSidebar, setOpenSidebar] = useState(false);
@@ -45,6 +47,8 @@ const Incharge = () => {
         );
       case "timetable":
         return <TableModal />;
+      case "adminManagement":
+        return <AdminManagement setActiveView={setActiveView} />;
       case "faculty":
         return <FacultyDirectory />;
       case "course":
@@ -70,11 +74,11 @@ const Incharge = () => {
     { key: "overview", label: "Overview", icon: LayoutDashboard },
     { key: "generate", label: "Generate Timetable", icon: CalendarDays },
     { key: "timetable", label: "Time Table", icon: Table },
+    { key: "adminManagement", label: "Admin Management", icon: ShieldCheck },
     { key: "faculty", label: "Faculty Directory", icon: Users },
     { key: "course", label: "Course Management", icon: BookOpen },
     { key: "batch", label: "Batch Management", icon: Layers },
     { key: "feedback", label: "Student Feedback", icon: MessageSquare },
-    { key: "request", label: "Pending Requests", icon: ClipboardList },
   ];
 
   return (
@@ -163,7 +167,13 @@ const Incharge = () => {
 
         {/* ================= CONTENT ================= */}
         <div className="flex-1 overflow-y-auto ">
-          <div className="bg-white dark:bg-slate-900  shadow-md border border-slate-200 dark:border-slate-700 p-4 min-h-full flex">
+          {/* 🔥 fix: was `flex` (row by default) — content like loaders/empty
+              states that center via `justify-center` inside a plain div were
+              being left-aligned since the row's main axis is horizontal and
+              defaults to justify-start. `flex-col` makes the cross axis
+              horizontal, so the default `align-items: stretch` gives
+              renderContent() a full-width box to center within. */}
+          <div className="bg-white dark:bg-slate-900  shadow-md border border-slate-200 dark:border-slate-700 p-4 min-h-full flex flex-col">
             {renderContent()}
           </div>
         </div>

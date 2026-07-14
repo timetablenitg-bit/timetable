@@ -20,6 +20,7 @@ import userRoutes from "./src/routes/admin/userRoutes.js";
 import exportRoutes from "./src/routes/exportRoutes.js";
 import studentFeedbackRoutes from "./src/routes/student/feedbackRoutes.student.js";
 import adminFeedbackRoutes from "./src/routes/admin/feedbackRoutes.admin.js";
+import adminRoutes from "./src/routes/admin/adminRoutes.js";
 
 import timetablePublicRoutes from "./src/routes/Timetablepublicroutes.js"; // ← new
 
@@ -47,7 +48,8 @@ app.use("/api/v1/admin/course-registration", courseRegistrationAdminRoutes);
 app.use("/api/v1/admin/users", userRoutes);
 app.use("/api/v1/export", exportRoutes);
 
-//Faculty Routes
+//Admin role Routes
+app.use("/api/admin", adminRoutes);
 
 //Student Routes
 app.use("/api/v1/student/course-registration", courseRegistrationRoutes);

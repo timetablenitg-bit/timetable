@@ -1,19 +1,19 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Search, Sparkles, X } from "lucide-react";
+import DropdownPortal from "./DropdownPortal";
 
-// Shown in the course cell when row.course.is_elective_slot === true.
-// Lets admin pick which actual elective course fills that slot.
 const ElectivePicker = ({
   allCourses = [],
   batchDepartment,
-  value, // currently selected actual elective course object (or null)
-  onChange, // (course | null) => void
-  slotName, // e.g. "Elective III"
+  value,
+  onChange,
+  slotName,
 }) => {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const wrapperRef = useRef(null);
+  const dropdownRef = useRef(null);
 
   useEffect(() => {
     setQuery(value ? `${value.course_code} – ${value.course_name}` : "");
@@ -21,23 +21,20 @@ const ElectivePicker = ({
 
   useEffect(() => {
     const handler = (e) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target))
-        setOpen(false);
+      const inWrapper = wrapperRef.current?.contains(e.target);
+      const inDropdown = dropdownRef.current?.contains(e.target);
+      if (!inWrapper && !inDropdown) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Only actual elective courses (not slots themselves)
   const electivePool = allCourses.filter(
     (c) => c.nature === "ELECTIVE" && !c.is_elective_slot,
   );
-
-  // DEPT pool = same department; ALL pool = everything
   const pool = showAll
     ? electivePool
     : electivePool.filter((c) => c.department === batchDepartment);
-
   const filtered = pool
     .filter(
       (c) =>
@@ -107,62 +104,65 @@ const ElectivePicker = ({
         )}
       </div>
 
-      {open && (
-        <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border border-violet-200 dark:border-violet-800/50 rounded-xl shadow-xl max-h-64 overflow-y-auto">
-          {electivePool.length === 0 ? (
-            <div className="px-4 py-4 text-xs text-gray-400 italic text-center">
-              No elective courses found.
-              <br />
-              <span className="text-violet-400">
-                Add elective courses first from the Courses tab.
-              </span>
+      <DropdownPortal
+        anchorRef={wrapperRef}
+        dropdownRef={dropdownRef}
+        open={open}
+        className="bg-white dark:bg-gray-800 border border-violet-200 dark:border-violet-800/50 rounded-xl shadow-xl max-h-64 overflow-y-auto"
+      >
+        {electivePool.length === 0 ? (
+          <div className="px-4 py-4 text-xs text-gray-400 italic text-center">
+            No elective courses found.
+            <br />
+            <span className="text-violet-400">
+              Add elective courses first from the Courses tab.
+            </span>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="px-4 py-3 text-xs text-gray-400 italic">
+            No matches
+            {!showAll && (
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setShowAll(true);
+                }}
+                className="ml-1 text-violet-500 underline"
+              >
+                search all departments?
+              </button>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="px-3 py-1.5 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider border-b border-gray-100 dark:border-gray-700">
+              {showAll ? "All departments" : `${batchDepartment} electives`} ·{" "}
+              {filtered.length} found
             </div>
-          ) : filtered.length === 0 ? (
-            <div className="px-4 py-3 text-xs text-gray-400 italic">
-              No matches
-              {!showAll && (
-                <button
-                  type="button"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    setShowAll(true);
-                  }}
-                  className="ml-1 text-violet-500 underline"
-                >
-                  search all departments?
-                </button>
-              )}
-            </div>
-          ) : (
-            <>
-              <div className="px-3 py-1.5 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider border-b border-gray-100 dark:border-gray-700">
-                {showAll ? "All departments" : `${batchDepartment} electives`} ·{" "}
-                {filtered.length} found
-              </div>
-              {filtered.map((c) => (
-                <button
-                  key={c._id}
-                  type="button"
-                  onClick={() => {
-                    onChange(c);
-                    setQuery(`${c.course_code} – ${c.course_name}`);
-                    setOpen(false);
-                  }}
-                  className="w-full text-left px-4 py-3 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-colors border-b border-gray-100 dark:border-gray-700 last:border-0"
-                >
-                  <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
-                    {c.course_name}
-                  </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                    {c.course_code} · {c.department} · {c.credits ?? "–"} cr ·{" "}
-                    {c.lecture ?? 0}-{c.tutorial ?? 0}-{c.practical ?? 0}
-                  </p>
-                </button>
-              ))}
-            </>
-          )}
-        </div>
-      )}
+            {filtered.map((c) => (
+              <button
+                key={c._id}
+                type="button"
+                onClick={() => {
+                  onChange(c);
+                  setQuery(`${c.course_code} – ${c.course_name}`);
+                  setOpen(false);
+                }}
+                className="w-full text-left px-4 py-3 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-colors border-b border-gray-100 dark:border-gray-700 last:border-0"
+              >
+                <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                  {c.course_name}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  {c.course_code} · {c.department} · {c.credits ?? "–"} cr ·{" "}
+                  {c.lecture ?? 0}-{c.tutorial ?? 0}-{c.practical ?? 0}
+                </p>
+              </button>
+            ))}
+          </>
+        )}
+      </DropdownPortal>
     </div>
   );
 };

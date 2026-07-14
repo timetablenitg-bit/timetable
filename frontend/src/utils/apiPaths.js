@@ -18,6 +18,12 @@ export const API_PATHS = {
       `/api/v1/admin/course-registration/overview/${session_id}`,
     BACKLOG_STATS: (session_id) =>
       `/api/v1/admin/course-registration/backlog-stats/${session_id}`,
+    // ── ADMIN MANAGEMENT (promote/demote faculty, action log) ──────────────
+    SEARCH_FACULTY_FOR_ADMIN: "/api/admin/search-faculty",
+    LIST_ADMINS: "/api/admin/list",
+    PROMOTE_TO_ADMIN: "/api/admin/promote",
+    DEMOTE_ADMIN: "/api/admin/demote",
+    ADMIN_LOGS: (adminId) => `/api/admin/${adminId}/logs`,
   },
 
   USER: {
