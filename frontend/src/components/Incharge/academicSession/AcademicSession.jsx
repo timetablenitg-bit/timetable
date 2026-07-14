@@ -135,7 +135,7 @@ const AcademicSession = ({ session, onClose }) => {
                       className="text-emerald-500 flex-shrink-0"
                     />
                     <span className="text-[11px] sm:text-xs text-gray-600 dark:text-gray-300">
-                      {session.type === "EVEN"
+                      {session.term === "EVEN"
                         ? "Even Semester"
                         : "Odd Semester"}
                     </span>

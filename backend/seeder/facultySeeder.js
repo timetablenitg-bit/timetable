@@ -153,9 +153,9 @@ const faculties = [
   { faculty_code: "UKT-HSS", name: "Dr. Unais KT", department: "HSS" },
   { faculty_code: "SKG-HSS", name: "Mr. Sudharsan", department: "HSS" },
   {
-    faculty_code: "SKS-HSS",
+    faculty_code: "SKS-MCE",
     name: "Dr. Sanjeev Kumar Singh",
-    department: "HSS",
+    department: "MCE",
   },
   { faculty_code: "RK-HSS", name: "Dr. Rinu Koshy", department: "HSS" },
   {
