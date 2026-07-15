@@ -145,6 +145,8 @@ export const API_PATHS = {
       `/api/v1/admin/timetable/engine/manual-review/${item_id}/unplaced`,
     MANUAL_REVIEW_MINOR_OE_AVAILABILITY: (item_id) =>
       `/api/v1/admin/timetable/engine/manual-review/${item_id}/minor-oe-availability`,
+    SAVE_BATCH_WEEK: (timetable_id) =>
+      `/api/v1/admin/timetable/engine/schedule/${timetable_id}/batch-week`,
   },
 
   STUDENT: {

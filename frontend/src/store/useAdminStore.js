@@ -38,6 +38,10 @@ const useAdminStore = create((set, get) => ({
 
   isSavingTrack: false,
 
+  isSavingBatchWeek: false,
+  batchCellError: null,
+  scheduleWarnings: [],
+
   // ====================== Generic Helpers ======================
   setLoading: (value) => set({ isLoading: value }),
   setSaving: (value) => set({ isSaving: value }),
@@ -1070,6 +1074,30 @@ const useAdminStore = create((set, get) => ({
     } catch (error) {
       const message = error.response?.data?.message || "Failed to update track";
       set({ scheduleError: message, isSavingTrack: false });
+      return { ok: false, message };
+    }
+  },
+
+  saveBatchWeek: async (timetable_id, payload) => {
+    set({ isSavingBatchWeek: true, batchCellError: null });
+    try {
+      const response = await axiosInstance.patch(
+        API_PATHS.TIMETABLE.SAVE_BATCH_WEEK(timetable_id),
+        payload,
+      );
+      const { grid, warnings } = response.data.data;
+      set((state) => ({
+        activeScheduleData: state.activeScheduleData
+          ? { ...state.activeScheduleData, grid }
+          : state.activeScheduleData,
+        scheduleWarnings: warnings ?? [],
+        isSavingBatchWeek: false,
+      }));
+      return { ok: true, warnings: warnings ?? [] };
+    } catch (error) {
+      const message =
+        error.response?.data?.message || "Failed to save timetable changes";
+      set({ batchCellError: message, isSavingBatchWeek: false });
       return { ok: false, message };
     }
   },
