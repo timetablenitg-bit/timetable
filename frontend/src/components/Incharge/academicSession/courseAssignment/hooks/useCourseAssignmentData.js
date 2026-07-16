@@ -1,31 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
-import useAdminStore from "../../../../../store/useAdminStore";
+import useAdminStore from "../../../../../store/admin/index";
 import { EVEN_SEMS, ODD_SEMS, DURATION_MAP } from "../constants";
 import { buildRowPayload } from "../RowHelpers";
 
-// Default row factory.
-// elective_course: the actual elective picked for an elective slot row.
-// elective_slot_id: stored so the backend knows which slot was filled.
 const makeRow = (overrides = {}) => ({
   rowId: crypto.randomUUID(),
-  course: null, // for slot rows: the slot Course doc
-  elective_course: null, // for slot rows: the actual chosen elective
+  course: null,
+  elective_course: null,
   faculty: null,
   assignment_type: "regular",
   component_type: "lecture",
   sessions_per_week: null,
   duration: 1,
-  shared_lab_with: [], // Course ids sharing the same physical lab room
-  synced_with: [], // CourseAssignment ids forced into the same slot
+  shared_lab_with: [],
+  synced_with: [],
   isManual: false,
   assignmentId: undefined,
   _backlogCount: undefined,
   ...overrides,
 });
 
-// Owns: fetching batches/faculties/courses/assignments/backlog/overview for a
-// session, and building+mutating the per-batch `rows` state that the table UI
-// renders from.
 export default function useCourseAssignmentData(session) {
   const {
     batches,
@@ -39,6 +33,7 @@ export default function useCourseAssignmentData(session) {
     fetchBacklogStats,
     fetchRegistrationOverview,
     bulkUpsertCourseAssignments,
+    deleteCourseAssignment,
   } = useAdminStore();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -46,8 +41,18 @@ export default function useCourseAssignmentData(session) {
   const [rows, setRows] = useState({});
   const [backlogStats, setBacklogStats] = useState([]);
   const [overviewData, setOverviewData] = useState({});
+  const [deletingRowId, setDeletingRowId] = useState(null);
+  // 🔥 NEW — courseIds hidden per batch. Unassigned placeholder rows are
+  // regenerated from batchCourses every time the derive effect runs (any
+  // courseAssignments/courses/faculties refetch), so there's nothing in
+  // `rows` to "delete" for them — this is what actually sticks across
+  // re-derives within the session. NOTE: this is session-only state, not
+  // persisted — a page reload will bring these rows back, since as far as
+  // the backend is concerned the course is still offered by the batch and
+  // still unassigned. If that needs to survive reloads, it needs a real
+  // backend field (e.g. an excluded/skipped list on the batch), not this.
+  const [hiddenCourseIds, setHiddenCourseIds] = useState({}); // { [batchId]: Set<courseId> }
 
-  // ── Load all data ────────────────────────────────────────────────────────
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -90,7 +95,6 @@ export default function useCourseAssignmentData(session) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?._id]);
 
-  // ── Stable batch list for current term ──────────────────────────────────
   const termSems = session?.term === "EVEN" ? EVEN_SEMS : ODD_SEMS;
   const filteredBatches = useMemo(
     () =>
@@ -104,7 +108,6 @@ export default function useCourseAssignmentData(session) {
     [batches, session?.term],
   );
 
-  // ── Initialise rows from fetched data ────────────────────────────────────
   useEffect(() => {
     if (!filteredBatches.length || !courses.length) return;
 
@@ -117,66 +120,75 @@ export default function useCourseAssignmentData(session) {
         ),
       );
 
-      if (existing?.length) {
-        newRows[batch._id] = existing.map((a) => {
-          // For assignments that have an elective_slot_id, the course_id is the
-          // actual elective. We need to restore slot + actual elective separately.
-          const slotId = a.elective_slot_id?._id ?? a.elective_slot_id;
-          const slotCourse = slotId
-            ? courses.find((c) => c._id?.toString() === slotId?.toString())
-            : null;
-
-          const actualCourseId = a.course_id?._id ?? a.course_id;
-          const actualCourse = courses.find(
-            (c) => c._id?.toString() === actualCourseId?.toString(),
+      const batchCourses = courses.filter((c) => {
+        if (batch.semester === 1 || batch.semester === 2) {
+          const name = batch.batch_name.toUpperCase();
+          const isSecCorD = name.includes("SEC C") || name.includes("SEC D");
+          const targetSem = isSecCorD
+            ? batch.semester === 1
+              ? 2
+              : 1
+            : batch.semester;
+          return Number(c.semester_offered) === targetSem;
+        } else {
+          return (
+            Number(c.semester_offered) === Number(batch.semester) &&
+            c.department === batch.department
           );
+        }
+      });
 
-          return makeRow({
-            // If it was a slot assignment, row.course = slot, row.elective_course = actual
-            course: slotCourse ?? actualCourse,
-            elective_course: slotCourse ? actualCourse : null,
-            faculty: faculties.find(
-              (f) =>
-                f._id?.toString() ===
-                (a.faculty_id?._id ?? a.faculty_id)?.toString(),
-            ),
-            assignment_type: a.assignment_type ?? "regular",
-            component_type: a.component_type ?? "lecture",
-            sessions_per_week: a.sessions_per_week ?? null,
-            duration: a.duration ?? 1,
-            // restore shared_lab_with as plain id strings/ObjectIds
-            shared_lab_with: (a.shared_lab_with ?? []).map((c) => c?._id ?? c),
-            // restore synced_with as plain id strings/ObjectIds
-            synced_with: (a.synced_with ?? []).map((s) => s?._id ?? s),
-            assignmentId: a._id,
-          });
+      const existingRows = (existing ?? []).map((a) => {
+        const slotId = a.elective_slot_id?._id ?? a.elective_slot_id;
+        const slotCourse = slotId
+          ? courses.find((c) => c._id?.toString() === slotId?.toString())
+          : null;
+
+        const actualCourseId = a.course_id?._id ?? a.course_id;
+        const actualCourse = courses.find(
+          (c) => c._id?.toString() === actualCourseId?.toString(),
+        );
+
+        return makeRow({
+          course: slotCourse ?? actualCourse,
+          elective_course: slotCourse ? actualCourse : null,
+          faculty: faculties.find(
+            (f) =>
+              f._id?.toString() ===
+              (a.faculty_id?._id ?? a.faculty_id)?.toString(),
+          ),
+          assignment_type: a.assignment_type ?? "regular",
+          component_type: a.component_type ?? "lecture",
+          sessions_per_week: a.sessions_per_week ?? null,
+          duration: a.duration ?? 1,
+          shared_lab_with: (a.shared_lab_with ?? []).map((c) => c?._id ?? c),
+          synced_with: (a.synced_with ?? []).map((s) => s?._id ?? s),
+          assignmentId: a._id,
         });
-      } else {
-        const batchCourses = courses.filter((c) => {
-          if (batch.semester === 1 || batch.semester === 2) {
-            const name = batch.batch_name.toUpperCase();
-            const isSecCorD = name.includes("SEC C") || name.includes("SEC D");
-            const targetSem = isSecCorD
-              ? batch.semester === 1
-                ? 2
-                : 1
-              : batch.semester;
-            return Number(c.semester_offered) === targetSem;
-          } else {
-            return (
-              Number(c.semester_offered) === Number(batch.semester) &&
-              c.department === batch.department
-            );
-          }
-        });
-        newRows[batch._id] = batchCourses.map((course) =>
+      });
+
+      const assignedCourseIds = new Set(
+        existingRows.map((r) => r.course?._id?.toString()),
+      );
+
+      // 🔥 NEW — skip anything the admin explicitly hid for this batch
+      const hiddenForBatch = hiddenCourseIds[batch._id] ?? new Set();
+
+      const unassignedRows = batchCourses
+        .filter(
+          (c) =>
+            !assignedCourseIds.has(c._id?.toString()) &&
+            !hiddenForBatch.has(c._id?.toString()), // 🔥 NEW
+        )
+        .map((course) =>
           makeRow({
             course,
             component_type: course.course_type === "LAB" ? "lab" : "lecture",
             duration: course.course_type === "LAB" ? 3 : 1,
           }),
         );
-      }
+
+      newRows[batch._id] = [...existingRows, ...unassignedRows];
 
       const existingCourseIds = new Set(
         (newRows[batch._id] ?? []).map((r) => r.course?._id?.toString()),
@@ -207,9 +219,9 @@ export default function useCourseAssignmentData(session) {
     faculties,
     backlogStats,
     overviewData,
+    hiddenCourseIds, // 🔥 NEW dep
   ]);
 
-  // ── Row mutation helpers ─────────────────────────────────────────────────
   const updateRow = (batchId, rowId, patch) =>
     setRows((prev) => ({
       ...prev,
@@ -222,7 +234,6 @@ export default function useCourseAssignmentData(session) {
     updateRow(batchId, rowId, {
       component_type,
       duration: DURATION_MAP[component_type] ?? 1,
-      // dropping out of "lab" clears the now-meaningless shared_lab_with
       ...(component_type !== "lab" ? { shared_lab_with: [] } : {}),
     });
 
@@ -235,19 +246,70 @@ export default function useCourseAssignmentData(session) {
       ],
     }));
 
-  const deleteRow = (batchId, rowId) => {
+  const deleteRow = async (batchId, rowId) => {
+    const row = rows[batchId]?.find((r) => r.rowId === rowId);
+    if (!row) return;
+
     if (!window.confirm("Delete this course assignment?")) return;
-    setRows((prev) => ({
-      ...prev,
-      [batchId]: prev[batchId].filter((r) => r.rowId !== rowId),
-    }));
+
+    // 🔥 CHANGED — no assignmentId means either a manually-added blank row
+    // (safe to just drop, it's never re-derived) or a derived "still needs
+    // assignment" placeholder for a required batch course (needs to go into
+    // hiddenCourseIds or the derive effect will just regenerate it).
+    if (!row.assignmentId) {
+      setRows((prev) => ({
+        ...prev,
+        [batchId]: prev[batchId].filter((r) => r.rowId !== rowId),
+      }));
+
+      if (!row.isManual && row.course?._id) {
+        const courseId = row.course._id.toString();
+        setHiddenCourseIds((prev) => {
+          const next = new Set(prev[batchId] ?? []);
+          next.add(courseId);
+          return { ...prev, [batchId]: next };
+        });
+      }
+      return;
+    }
+
+    const assignmentId = row.assignmentId.toString();
+    setDeletingRowId(rowId);
+    setError(null);
+
+    try {
+      const ok = await deleteCourseAssignment(row.assignmentId);
+      if (!ok) {
+        setError("Failed to delete the course assignment. Please try again.");
+        return;
+      }
+
+      setRows((prev) => {
+        const next = {};
+        for (const [bId, list] of Object.entries(prev)) {
+          next[bId] = list
+            .filter((r) => !(bId === batchId && r.rowId === rowId))
+            .map((r) => ({
+              ...r,
+              synced_with: (r.synced_with ?? []).filter(
+                (id) => (id?._id ?? id)?.toString() !== assignmentId,
+              ),
+              shared_lab_with: (r.shared_lab_with ?? []).filter(
+                (id) => (id?._id ?? id)?.toString() !== assignmentId,
+              ),
+            }));
+        }
+        return next;
+      });
+
+      await fetchCourseAssignments({ session_id: session?._id });
+    } catch {
+      setError("Failed to delete the course assignment. Please try again.");
+    } finally {
+      setDeletingRowId(null);
+    }
   };
 
-  // 🔥 NEW: keep synced_with links two-directional across the whole `rows`
-  // state (which spans every batch, not just the one currently open), and
-  // persist both sides immediately. We can't rely on "Save Batch" for the
-  // *other* side of the link because that assignment may belong to a batch
-  // card the admin never opens/saves in this session.
   const updateSyncedWith = async (batchId, rowId, nextSyncedIds) => {
     const currentRow = rows[batchId]?.find((r) => r.rowId === rowId);
     if (!currentRow || !currentRow.assignmentId) return;
@@ -261,7 +323,6 @@ export default function useCourseAssignmentData(session) {
     const removed = prevIds.filter((id) => !nextIds.includes(id));
     if (!added.length && !removed.length) return;
 
-    // Locate a row by assignmentId anywhere across all batches.
     const findRowLocation = (allRows, assignmentId) => {
       for (const [bId, list] of Object.entries(allRows)) {
         const r = list.find(
@@ -272,8 +333,6 @@ export default function useCourseAssignmentData(session) {
       return null;
     };
 
-    // Snapshot used both to update local state and to build the API payload
-    // for the "other side" of every added/removed link.
     const snapshot = rows;
     const otherUpdates = [...added, ...removed]
       .map((assignmentId) => {
@@ -293,7 +352,6 @@ export default function useCourseAssignmentData(session) {
       })
       .filter(Boolean);
 
-    // Update local state: current row + both sides of every affected link.
     setRows((prev) => {
       const next = { ...prev };
       next[batchId] = (next[batchId] ?? []).map((r) =>
@@ -307,7 +365,6 @@ export default function useCourseAssignmentData(session) {
       return next;
     });
 
-    // Persist both sides right away.
     try {
       const payloads = [];
       const currentPayload = buildRowPayload(
@@ -345,13 +402,14 @@ export default function useCourseAssignmentData(session) {
     filteredBatches,
     faculties,
     courses,
-    courseAssignments, // expose raw list so the tab can pass it down as allAssignments
+    courseAssignments,
     overviewData,
     backlogStats,
     updateRow,
     handleComponentTypeChange,
     addRow,
     deleteRow,
-    updateSyncedWith, // 🔥 NEW
+    deletingRowId,
+    updateSyncedWith,
   };
 }

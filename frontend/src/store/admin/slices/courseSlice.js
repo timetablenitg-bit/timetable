@@ -1,29 +1,15 @@
-import { create } from "zustand";
+import axiosInstance from "../../../lib/axiosInstance";
+import { API_PATHS } from "../../../utils/apiPaths";
 
-import {
-  getCourses,
-  createCourseApi,
-  bulkCreateCoursesApi,
-  updateCourseApi,
-  deleteCourseApi,
-} from "../../services/courseService";
-
-const useCourseStore = create((set) => ({
-  // State
+// ====================== Courses ======================
+export const createCourseSlice = (set) => ({
   courses: [],
-  isLoading: false,
-  isSaving: false,
-  error: null,
 
-  // Helpers
-  clearError: () => set({ error: null }),
-
-  // Fetch
   fetchCourses: async () => {
     set({ isLoading: true, error: null });
 
     try {
-      const response = await getCourses();
+      const response = await axiosInstance.get(API_PATHS.COURSE.GET);
 
       set({
         courses: response.data.data || [],
@@ -37,12 +23,14 @@ const useCourseStore = create((set) => ({
     }
   },
 
-  // Create
   createCourse: async (payload) => {
     set({ isSaving: true, error: null });
 
     try {
-      const response = await createCourseApi(payload);
+      const response = await axiosInstance.post(
+        API_PATHS.COURSE.CREATE,
+        payload,
+      );
 
       set((state) => ({
         courses: [response.data.data, ...state.courses],
@@ -55,17 +43,17 @@ const useCourseStore = create((set) => ({
         error.response?.data?.message || "Failed to create course";
 
       set({ error: message, isSaving: false });
-
       return { success: false, message };
     }
   },
 
-  // Bulk Create
   bulkCreateCourses: async (rows) => {
     set({ isSaving: true, error: null });
 
     try {
-      const response = await bulkCreateCoursesApi(rows);
+      const response = await axiosInstance.post(API_PATHS.COURSE.BULK, {
+        rows,
+      });
 
       set((state) => ({
         courses: [...response.data.data, ...state.courses],
@@ -78,17 +66,18 @@ const useCourseStore = create((set) => ({
         error.response?.data?.message || "Failed to bulk upload courses";
 
       set({ error: message, isSaving: false });
-
       return { success: false, message };
     }
   },
 
-  // Update
   updateCourse: async (id, payload) => {
     set({ isSaving: true, error: null });
 
     try {
-      const response = await updateCourseApi(id, payload);
+      const response = await axiosInstance.put(
+        API_PATHS.COURSE.UPDATE(id),
+        payload,
+      );
 
       set((state) => ({
         courses: state.courses.map((course) =>
@@ -103,15 +92,13 @@ const useCourseStore = create((set) => ({
         error.response?.data?.message || "Failed to update course";
 
       set({ error: message, isSaving: false });
-
       return { success: false, message };
     }
   },
 
-  // Delete
   deleteCourse: async (id) => {
     try {
-      await deleteCourseApi(id);
+      await axiosInstance.delete(API_PATHS.COURSE.DELETE(id));
 
       set((state) => ({
         courses: state.courses.filter((course) => course._id !== id),
@@ -122,10 +109,7 @@ const useCourseStore = create((set) => ({
       set({
         error: error.response?.data?.message || "Failed to delete course",
       });
-
       return false;
     }
   },
-}));
-
-export default useCourseStore;
+});

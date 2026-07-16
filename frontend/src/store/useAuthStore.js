@@ -1,8 +1,7 @@
 import { create } from "zustand";
 import axiosInstance from "../lib/axiosInstance";
-import { toast } from "react-toastify";
 import { API_PATHS } from "../utils/apiPaths";
-export const useAuthStore = create((set, get) => ({
+export const useAuthStore = create((set) => ({
   // --- INITIAL STATE ---
   authUser: null,
   isSigningUp: false,

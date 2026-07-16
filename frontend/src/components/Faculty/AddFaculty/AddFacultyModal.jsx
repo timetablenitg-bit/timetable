@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { X, UserPlus, Eye } from "lucide-react";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import MethodSelector from "./MethodSelector ";
+import MethodSelector from "./MethodSelector";
 import ManualEntry from "./ManualEntry";
 import CSVEntry from "./CSVEntry";
 import FileUpload from "./FileUpload";
@@ -207,7 +207,9 @@ const AddFacultyModal = ({ isOpen, onClose, onAddFaculty }) => {
         onClose();
       }, 1500);
     } catch (error) {
-      toast.error("Error submitting faculty");
+      toast.error(
+        "Error submitting faculty, " + error.message || "Please try again.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -277,7 +279,7 @@ const AddFacultyModal = ({ isOpen, onClose, onAddFaculty }) => {
 
                 {/* Animated fixed height container for all forms */}
                 <div
-                  className={`min-h-[400px] transition-all duration-300 ${animation}`}
+                  className={`min-h-100 transition-all duration-300 ${animation}`}
                 >
                   {activeMethod === "manual" && (
                     <ManualEntry

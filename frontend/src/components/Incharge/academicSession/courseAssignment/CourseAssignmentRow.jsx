@@ -1,5 +1,5 @@
 import React from "react";
-import { Trash2 } from "lucide-react";
+import { Trash2, Loader2 } from "lucide-react";
 import CourseCell from "./CourseCell";
 import FacultyCell from "./FacultyCell";
 import CompactSelect from "./CompactSelect";
@@ -25,6 +25,7 @@ const CourseAssignmentRow = ({
   onComponentTypeChange, // (component_type) => void
   onSyncedWithChange, // (nextSyncedWithIds) => void
   onDeleteRow, // () => void
+  isDeleting, // 🔥 NEW — true while this row's delete request is in flight
 }) => {
   const rowClasses = row.course?.is_elective_slot
     ? "bg-violet-50/40 dark:bg-violet-900/10 hover:bg-violet-50 dark:hover:bg-violet-900/20"
@@ -76,7 +77,11 @@ const CourseAssignmentRow = ({
   };
 
   return (
-    <tr className={`transition-colors ${rowClasses}`}>
+    <tr
+      className={`transition-colors ${rowClasses} ${
+        isDeleting ? "opacity-50 pointer-events-none" : ""
+      }`}
+    >
       <td className="px-4 py-3 text-xs text-gray-400 align-middle">
         {idx + 1}
       </td>
@@ -169,9 +174,15 @@ const CourseAssignmentRow = ({
       <td className="px-3 py-3 text-center align-middle">
         <button
           onClick={onDeleteRow}
-          className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+          disabled={isDeleting}
+          aria-label="Delete course assignment"
+          className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-60 disabled:hover:bg-transparent rounded-lg transition-colors"
         >
-          <Trash2 size={14} />
+          {isDeleting ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <Trash2 size={14} />
+          )}
         </button>
       </td>
     </tr>

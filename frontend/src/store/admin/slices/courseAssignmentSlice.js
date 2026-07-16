@@ -1,28 +1,20 @@
-import { create } from "zustand";
+import axiosInstance from "../../../lib/axiosInstance";
+import { API_PATHS } from "../../../utils/apiPaths";
 
-import {
-  getCourseAssignments,
-  createCourseAssignmentApi,
-  bulkUpsertCourseAssignmentsApi,
-  updateCourseAssignmentApi,
-  deleteCourseAssignmentApi,
-} from "../../services/courseAssignmentService";
-
-const useCourseAssignmentStore = create((set) => ({
-  // State
+// ====================== Course Assignments ======================
+export const createCourseAssignmentSlice = (set, get) => ({
   courseAssignments: [],
-  isLoading: false,
-  isSaving: false,
-  error: null,
 
-  clearError: () => set({ error: null }),
-
-  // Fetch
   fetchCourseAssignments: async (filters = {}) => {
     set({ isLoading: true, error: null });
 
     try {
-      const response = await getCourseAssignments(filters);
+      const response = await axiosInstance.get(
+        API_PATHS.COURSE_ASSIGNMENT.GET,
+        {
+          params: filters,
+        },
+      );
 
       set({
         courseAssignments: response.data.data || [],
@@ -37,12 +29,14 @@ const useCourseAssignmentStore = create((set) => ({
     }
   },
 
-  // Create
   createCourseAssignment: async (payload) => {
     set({ isSaving: true, error: null });
 
     try {
-      const response = await createCourseAssignmentApi(payload);
+      const response = await axiosInstance.post(
+        API_PATHS.COURSE_ASSIGNMENT.CREATE,
+        payload,
+      );
 
       set((state) => ({
         courseAssignments: [response.data.data, ...state.courseAssignments],
@@ -54,53 +48,42 @@ const useCourseAssignmentStore = create((set) => ({
       const message =
         error.response?.data?.message || "Failed to create course assignment";
 
-      set({
-        error: message,
-        isSaving: false,
-      });
-
-      return {
-        success: false,
-        message,
-      };
+      set({ error: message, isSaving: false });
+      return { success: false, message };
     }
   },
 
-  // Bulk Save
   bulkUpsertCourseAssignments: async (academic_session_id, assignments) => {
     set({ isSaving: true, error: null });
 
     try {
-      const response = await bulkUpsertCourseAssignmentsApi(
-        academic_session_id,
-        assignments,
+      const response = await axiosInstance.post(
+        API_PATHS.COURSE_ASSIGNMENT.BULK,
+        {
+          academic_session_id,
+          assignments,
+        },
       );
 
       set({ isSaving: false });
-
       return response.data;
     } catch (error) {
       const message =
         error.response?.data?.message || "Failed to save course assignments";
 
-      set({
-        error: message,
-        isSaving: false,
-      });
-
-      return {
-        success: false,
-        message,
-      };
+      set({ error: message, isSaving: false });
+      return { success: false, message };
     }
   },
 
-  // Update
   updateCourseAssignment: async (id, payload) => {
     set({ isSaving: true, error: null });
 
     try {
-      const response = await updateCourseAssignmentApi(id, payload);
+      const response = await axiosInstance.put(
+        API_PATHS.COURSE_ASSIGNMENT.UPDATE(id),
+        payload,
+      );
 
       set((state) => ({
         courseAssignments: state.courseAssignments.map((assignment) =>
@@ -114,22 +97,26 @@ const useCourseAssignmentStore = create((set) => ({
       const message =
         error.response?.data?.message || "Failed to update course assignment";
 
-      set({
-        error: message,
-        isSaving: false,
-      });
-
-      return {
-        success: false,
-        message,
-      };
+      set({ error: message, isSaving: false });
+      return { success: false, message };
     }
   },
 
-  // Delete
+  // Thin convenience wrappers over updateCourseAssignment — kept separate
+  // for readability, since callers don't need to know it's the same call.
+  // `get()` resolves against the merged store, so this works fine living
+  // in its own slice.
+  updateSharedLabWith: async (id, course_ids) => {
+    return get().updateCourseAssignment(id, { shared_lab_with: course_ids });
+  },
+
+  updateSyncedWith: async (id, assignment_ids) => {
+    return get().updateCourseAssignment(id, { synced_with: assignment_ids });
+  },
+
   deleteCourseAssignment: async (id) => {
     try {
-      await deleteCourseAssignmentApi(id);
+      await axiosInstance.delete(API_PATHS.COURSE_ASSIGNMENT.DELETE(id));
 
       set((state) => ({
         courseAssignments: state.courseAssignments.filter(
@@ -143,10 +130,7 @@ const useCourseAssignmentStore = create((set) => ({
         error:
           error.response?.data?.message || "Failed to delete course assignment",
       });
-
       return false;
     }
   },
-}));
-
-export default useCourseAssignmentStore;
+});

@@ -1,25 +1,15 @@
-import { create } from "zustand";
+import axiosInstance from "../../../lib/axiosInstance";
+import { API_PATHS } from "../../../utils/apiPaths";
 
-import {
-  getAcademicSessions,
-  createAcademicSessionApi,
-  updateAcademicSessionApi,
-  deleteAcademicSessionApi,
-} from "../../services/academicSessionService";
-
-const useAcademicSessionStore = create((set) => ({
+// ====================== Academic Sessions ======================
+export const createAcademicSessionSlice = (set) => ({
   academicSessions: [],
-  isLoading: false,
-  isSaving: false,
-  error: null,
-
-  clearError: () => set({ error: null }),
 
   fetchAcademicSessions: async () => {
     set({ isLoading: true, error: null });
 
     try {
-      const response = await getAcademicSessions();
+      const response = await axiosInstance.get(API_PATHS.ACADEMIC_SESSION.GET);
 
       set({
         academicSessions: response.data.data || [],
@@ -38,30 +28,23 @@ const useAcademicSessionStore = create((set) => ({
     set({ isSaving: true, error: null });
 
     try {
-      const response = await createAcademicSessionApi(payload);
+      const response = await axiosInstance.post(
+        API_PATHS.ACADEMIC_SESSION.CREATE,
+        payload,
+      );
 
       set((state) => ({
         academicSessions: [response.data.data, ...state.academicSessions],
         isSaving: false,
       }));
 
-      return {
-        success: true,
-        data: response.data.data,
-      };
+      return { success: true, data: response.data.data };
     } catch (error) {
       const message =
         error.response?.data?.message || "Failed to create academic session";
 
-      set({
-        error: message,
-        isSaving: false,
-      });
-
-      return {
-        success: false,
-        message,
-      };
+      set({ error: message, isSaving: false });
+      return { success: false, message };
     }
   },
 
@@ -69,7 +52,10 @@ const useAcademicSessionStore = create((set) => ({
     set({ isSaving: true, error: null });
 
     try {
-      const response = await updateAcademicSessionApi(id, payload);
+      const response = await axiosInstance.put(
+        API_PATHS.ACADEMIC_SESSION.UPDATE(id),
+        payload,
+      );
 
       set((state) => ({
         academicSessions: state.academicSessions.map((session) =>
@@ -83,21 +69,14 @@ const useAcademicSessionStore = create((set) => ({
       const message =
         error.response?.data?.message || "Failed to update academic session";
 
-      set({
-        error: message,
-        isSaving: false,
-      });
-
-      return {
-        success: false,
-        message,
-      };
+      set({ error: message, isSaving: false });
+      return { success: false, message };
     }
   },
 
   deleteAcademicSession: async (id) => {
     try {
-      await deleteAcademicSessionApi(id);
+      await axiosInstance.delete(API_PATHS.ACADEMIC_SESSION.DELETE(id));
 
       set((state) => ({
         academicSessions: state.academicSessions.filter(
@@ -111,10 +90,7 @@ const useAcademicSessionStore = create((set) => ({
         error:
           error.response?.data?.message || "Failed to delete academic session",
       });
-
       return false;
     }
   },
-}));
-
-export default useAcademicSessionStore;
+});

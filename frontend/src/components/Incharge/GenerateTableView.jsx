@@ -4,8 +4,7 @@ import NoSessionCreated from "./GenerateTable/NoSessionCreated";
 import SessionList from "./academicSession/SessionList";
 import CreateSessionModal from "./academicSession/CreateSessionModal";
 import SearchBar from "./GenerateTable/SearchBar";
-import { useNavigate } from "react-router-dom";
-import useAdminStore from "../../store/useAdminStore";
+import useAdminStore from "../../store/admin/index";
 
 const GenerateTable = () => {
   const [filteredSessions, setFilteredSessions] = useState([]);
@@ -61,7 +60,7 @@ const GenerateTable = () => {
   };
 
   return (
-    <div className="min-h-screen w-full bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
+    <div className="min-h-screen w-full bg-linear-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <GenerateTableHeader
           onAddSession={() => {

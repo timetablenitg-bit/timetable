@@ -1,29 +1,15 @@
-import { create } from "zustand";
-import {
-  getFaculties,
-  createFacultyApi,
-  bulkCreateFacultiesApi,
-  updateFacultyApi,
-  deleteFacultyApi,
-  inviteFacultyApi,
-} from "../../services/facultyService";
+import axiosInstance from "../../../lib/axiosInstance";
+import { API_PATHS } from "../../../utils/apiPaths";
 
-const useFacultyStore = create((set) => ({
-  // State
+// ====================== Faculties ======================
+export const createFacultySlice = (set) => ({
   faculties: [],
-  isLoading: false,
-  isSaving: false,
-  error: null,
 
-  // Helpers
-  clearError: () => set({ error: null }),
-
-  // Fetch
   fetchFaculties: async () => {
     set({ isLoading: true, error: null });
 
     try {
-      const response = await getFaculties();
+      const response = await axiosInstance.get(API_PATHS.FACULTY.GET);
 
       set({
         faculties: response.data.data || [],
@@ -37,12 +23,14 @@ const useFacultyStore = create((set) => ({
     }
   },
 
-  // Create
   createFaculty: async (payload) => {
     set({ isSaving: true, error: null });
 
     try {
-      const response = await createFacultyApi(payload);
+      const response = await axiosInstance.post(
+        API_PATHS.FACULTY.CREATE,
+        payload,
+      );
 
       set((state) => ({
         faculties: [response.data.data, ...state.faculties],
@@ -55,17 +43,17 @@ const useFacultyStore = create((set) => ({
         error.response?.data?.message || "Failed to create faculty";
 
       set({ error: message, isSaving: false });
-
       return { success: false, message };
     }
   },
 
-  // Bulk Upload
   bulkCreateFaculties: async (rows) => {
     set({ isSaving: true, error: null });
 
     try {
-      const response = await bulkCreateFacultiesApi(rows);
+      const response = await axiosInstance.post(API_PATHS.FACULTY.BULK, {
+        rows,
+      });
 
       set((state) => ({
         faculties: [...response.data.data, ...state.faculties],
@@ -78,17 +66,18 @@ const useFacultyStore = create((set) => ({
         error.response?.data?.message || "Failed to bulk upload faculties";
 
       set({ error: message, isSaving: false });
-
       return { success: false, message };
     }
   },
 
-  // Update
   updateFaculty: async (id, payload) => {
     set({ isSaving: true, error: null });
 
     try {
-      const response = await updateFacultyApi(id, payload);
+      const response = await axiosInstance.put(
+        API_PATHS.FACULTY.UPDATE(id),
+        payload,
+      );
 
       set((state) => ({
         faculties: state.faculties.map((faculty) =>
@@ -103,15 +92,13 @@ const useFacultyStore = create((set) => ({
         error.response?.data?.message || "Failed to update faculty";
 
       set({ error: message, isSaving: false });
-
       return { success: false, message };
     }
   },
 
-  // Delete
   deleteFaculty: async (id) => {
     try {
-      await deleteFacultyApi(id);
+      await axiosInstance.delete(API_PATHS.FACULTY.DELETE(id));
 
       set((state) => ({
         faculties: state.faculties.filter((faculty) => faculty._id !== id),
@@ -122,42 +109,28 @@ const useFacultyStore = create((set) => ({
       set({
         error: error.response?.data?.message || "Failed to delete faculty",
       });
-
       return false;
     }
   },
 
-  // Invite
   inviteFaculty: async (facultyId) => {
     try {
-      const response = await inviteFacultyApi(facultyId);
+      const response = await axiosInstance.post(API_PATHS.AUTH.INVITE, {
+        facultyId,
+      });
 
+      // Only update state if the request actually succeeded
       set((state) => ({
-        faculties: state.faculties.map((faculty) =>
-          faculty._id === facultyId
-            ? {
-                ...faculty,
-                invite_status: "pending",
-              }
-            : faculty,
+        faculties: state.faculties.map((f) =>
+          f._id === facultyId ? { ...f, invite_status: "pending" } : f,
         ),
       }));
 
-      return {
-        success: true,
-        message: response.data.message,
-      };
+      return { success: true, message: response.data.message };
     } catch (error) {
       const message = error.response?.data?.message || "Failed to send invite";
-
       set({ error: message });
-
-      return {
-        success: false,
-        message,
-      };
+      return { success: false, message };
     }
   },
-}));
-
-export default useFacultyStore;
+});

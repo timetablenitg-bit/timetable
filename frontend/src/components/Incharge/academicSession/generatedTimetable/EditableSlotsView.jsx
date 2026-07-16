@@ -15,7 +15,7 @@ import {
   ChevronDown,
   AlertCircle,
 } from "lucide-react";
-import useAdminStore from "../../../../store/useAdminStore"; // ← adjust path to your store
+import useAdminStore from "../../../../store/admin/index"; // ← adjust path to your store
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -226,7 +226,6 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
   const bulkUpdateSlots = useAdminStore((s) => s.bulkUpdateSlots);
   const createSlot = useAdminStore((s) => s.createSlot);
   const deleteSlot = useAdminStore((s) => s.deleteSlot);
-  const patchSlot = useAdminStore((s) => s.patchSlot);
   const isSavingSlots = useAdminStore((s) => s.isSavingSlots);
   const slotsError = useAdminStore((s) => s.slotsError);
 

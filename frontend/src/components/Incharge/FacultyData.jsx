@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import useAdminStore from "../../store/useAdminStore";
+import useAdminStore from "../../store/admin/index";
 import FacultyDetailsModal from "../Faculty/FacultyDetailModal";
 import {
   Search,

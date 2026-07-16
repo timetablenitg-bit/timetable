@@ -1,5 +1,5 @@
 import { useState } from "react";
-import useAdminStore from "../../../../../store/useAdminStore";
+import useAdminStore from "../../../../../store/admin/index";
 import { buildRowPayload } from "../RowHelpers";
 
 // Owns: building the API payload from row state, validating rows before
@@ -15,12 +15,18 @@ export default function useCourseAssignmentSave({ session, rows, onSave }) {
 
   // For slot rows: course_id = actual elective, elective_slot_id = slot._id
   // For normal rows: course_id = course._id, elective_slot_id = null
+  // Incomplete rows (no course/elective picked, or no faculty) return null
+  // from buildRowPayload and are filtered out here — this is what makes
+  // partial saves possible, since incomplete rows are just skipped rather
+  // than blocking the whole batch.
   const buildPayload = (batchId) =>
     (rows[batchId] ?? [])
       .map((r) => buildRowPayload(r, batchId, session._id))
       .filter(Boolean);
 
   // Slot rows need an elective picked, not just the slot itself.
+  // Still exposed for UI purposes (e.g. showing "3 rows still need a
+  // faculty" hints), but no longer used to block saving.
   const getIncompleteRows = (batchId) =>
     (rows[batchId] ?? []).filter((r) => {
       if (r.course?.is_elective_slot) return !r.elective_course || !r.faculty;
@@ -28,28 +34,31 @@ export default function useCourseAssignmentSave({ session, rows, onSave }) {
     });
 
   const saveBatchAssignments = async (batchId) => {
-    const incomplete = getIncompleteRows(batchId);
-    if (incomplete.length) {
-      setBatchErrors((p) => ({
-        ...p,
-        [batchId]:
-          "Fill in all course and faculty fields before saving. Elective slots need an elective selected.",
-      }));
-      return;
-    }
     const payload = buildPayload(batchId);
+
     if (!payload.length) {
       setBatchErrors((p) => ({
         ...p,
-        [batchId]: "Nothing to save — assign at least one course.",
+        [batchId]:
+          "Nothing to save yet — assign at least one course and faculty.",
       }));
       return;
     }
+
     setBatchErrors((p) => ({ ...p, [batchId]: null }));
     setSavingBatch(batchId);
     try {
       await bulkUpsertCourseAssignments(session._id, payload);
       await fetchCourseAssignments({ session_id: session._id });
+
+      // Let the admin know some rows were skipped, without treating it as an error.
+      const skipped = getIncompleteRows(batchId).length;
+      if (skipped) {
+        setBatchErrors((p) => ({
+          ...p,
+          [batchId]: `Saved ${payload.length} course(s). ${skipped} row(s) still need a course/faculty and were not saved.`,
+        }));
+      }
     } catch (e) {
       setBatchErrors((p) => ({
         ...p,
@@ -62,11 +71,16 @@ export default function useCourseAssignmentSave({ session, rows, onSave }) {
   };
 
   const saveAllAssignments = async () => {
+    // buildPayload already drops incomplete rows per-batch, so allPayload
+    // here only ever contains complete rows.
     const allPayload = Object.keys(rows).flatMap(buildPayload);
-    if (allPayload.some((p) => !p.course_id || !p.faculty_id)) {
-      setError("Some assignments are incomplete.");
+
+    if (!allPayload.length) {
+      setError("Nothing to save yet — assign at least one course and faculty.");
       return;
     }
+
+    setError(null);
     try {
       setIsSavingAll(true);
       await bulkUpsertCourseAssignments(session._id, allPayload);

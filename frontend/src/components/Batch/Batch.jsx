@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { toast } from "react-toastify";
-import useAdminStore from "../../store/useAdminStore";
+import useAdminStore from "../../store/admin";
 
-// Components
 import BatchHeader from "../Batch/BatchHeader";
 import AddBatchModal from "./AddBatch/AddBatchModal";
 import BatchList from "../Batch/BatchList";
@@ -18,47 +17,31 @@ const Batch = () => {
     batches,
     fetchBatches,
     saveBatchesToBackend,
-    bulkCreateBatches,
     updateBatchInBackend,
     deleteBatchFromBackend,
     isLoading,
-    isSaving,
   } = useAdminStore();
 
-  // Fetch all batches on component mount
   useEffect(() => {
     fetchBatches();
   }, [fetchBatches]);
-  console.log(batches);
 
   const handleAddBatch = async (newBatchData) => {
-    // For single batch creation
-    if (!Array.isArray(newBatchData)) {
-      const result = await saveBatchesToBackend([newBatchData]);
-      if (result.success) {
-        toast.success("Batch created successfully!");
-        return true;
-      } else {
-        toast.error(result.error || "Failed to create batch");
-        return false;
-      }
+    const result = await saveBatchesToBackend(newBatchData);
+
+    if (!result.success) {
+      toast.error(result.message || "Failed to create batch");
+      return false;
     }
-    // For bulk batch creation
-    else {
-      const result = await saveBatchesToBackend(newBatchData);
-      if (result.success) {
-        const { inserted, errors } = result.summary;
-        if (errors > 0) {
-          toast.warning(`${inserted} batches created, ${errors} failed.`);
-        } else {
-          toast.success(`${inserted} batches created successfully!`);
-        }
-        return true;
-      } else {
-        toast.error(result.error || "Failed to create batches");
-        return false;
-      }
+
+    if (Array.isArray(newBatchData) && newBatchData.length > 1) {
+      const insertedCount = Array.isArray(result.data) ? result.data.length : 0;
+      toast.success(`${insertedCount} batches created successfully!`);
+    } else {
+      toast.success("Batch created successfully!");
     }
+
+    return true;
   };
 
   const handleSaveEdit = async (updatedData) => {
@@ -72,7 +55,7 @@ const Batch = () => {
       toast.success("Batch updated successfully.");
       setEditingBatch(null);
     } else {
-      toast.error(result.error || "Failed to update batch");
+      toast.error(result.message || "Failed to update batch");
     }
   };
 
@@ -83,7 +66,7 @@ const Batch = () => {
     if (result.success) {
       toast.success("Batch deleted successfully.");
     } else {
-      toast.error(result.error || "Failed to delete batch");
+      toast.error(result.message || "Failed to delete batch");
     }
   };
 

@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Plus } from "lucide-react";
 import FacultyData from "./FacultyData";
 import AddFacultyModal from "../Faculty/AddFaculty/AddFacultyModal";
-import useAdminStore from "../../store/useAdminStore";
+import useAdminStore from "../../store/admin/index";
 
 const FacultyDirectry = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);

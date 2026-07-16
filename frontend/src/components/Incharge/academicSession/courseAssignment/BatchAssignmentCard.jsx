@@ -23,6 +23,7 @@ const BatchAssignmentCard = ({
   onComponentTypeChange, // (rowId, component_type) => void
   onSyncedWithChange, // (rowId, nextSyncedWithIds) => void
   onDeleteRow, // (rowId) => void
+  deletingRowId, // 🔥 NEW — rowId currently being deleted server-side, or null
   onAddRow, // () => void
   onSaveBatch, // () => void
   isSaving,
@@ -137,6 +138,7 @@ const BatchAssignmentCard = ({
                       onSyncedWithChange(row.rowId, next)
                     }
                     onDeleteRow={() => onDeleteRow(row.rowId)}
+                    isDeleting={deletingRowId === row.rowId} // 🔥 NEW
                   />
                 ))}
               </tbody>
@@ -161,6 +163,7 @@ const BatchAssignmentCard = ({
                   onComponentTypeChange(row.rowId, v)
                 }
                 onDeleteRow={() => onDeleteRow(row.rowId)}
+                isDeleting={deletingRowId === row.rowId} // 🔥 NEW
               />
             ))}
           </div>

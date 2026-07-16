@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import CourseHeader from "./CourseHeader";
 import CourseList from "./CourseList";
 import AddCourseModal from "./AddCourse/AddCourseModal";
-import useAdminStore from "../../store/useAdminStore";
+import useAdminStore from "../../store/admin/index";
 import EditCourseModal from "./EditCourseModal";
 import { toast } from "react-toastify";
 import CustomLoader from "../../ui/CustomLoader";

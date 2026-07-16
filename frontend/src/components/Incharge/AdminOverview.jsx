@@ -16,7 +16,7 @@ import {
   BarChart3,
   Building2,
 } from "lucide-react";
-import useAdminStore from "../../store/useAdminStore";
+import useAdminStore from "../../store/admin/index";
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 const StatCard = ({
@@ -96,7 +96,7 @@ const DeptBar = ({ dept, count, max }) => (
     </span>
     <div className="flex-1 bg-gray-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
       <div
-        className="h-full bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-full transition-all duration-700"
+        className="h-full bg-linear-to-r from-emerald-400 to-emerald-500 rounded-full transition-all duration-700"
         style={{ width: `${max > 0 ? Math.round((count / max) * 100) : 0}%` }}
       />
     </div>
@@ -198,7 +198,7 @@ const SemChip = ({ sem, count }) => (
   <div className="flex flex-col items-end gap-1" style={{ height: 80 }}>
     <div className="w-full flex-1 bg-gray-100 dark:bg-slate-800 rounded-md overflow-hidden flex items-end">
       <div
-        className="w-full bg-gradient-to-t from-emerald-500 to-emerald-300 rounded-md transition-all duration-700"
+        className="w-full bg-linear-to-t from-emerald-500 to-emerald-300 rounded-md transition-all duration-700"
         style={{
           height: `${count > 0 ? Math.max(12, (count / 12) * 100) : 0}%`,
         }}

@@ -15,14 +15,12 @@ import {
 } from "lucide-react";
 
 import Navbaar from "../components/Navbaar";
-// 2️⃣ Removed the duplicate TableModal import
 import TableModal from "../components/TableModal";
 import AdminOverview from "../components/Incharge/AdminOverview";
-import GenerateTable from "../components/Incharge/GenerateTable";
+import GenerateTable from "../components/Incharge/GenerateTableView";
 import FacultyDirectory from "../components/Incharge/FacultyDirectry";
 import Course from "../components/Course/Course";
 import Batch from "../components/Batch/Batch";
-import Room from "../components/Room/Room";
 import AcademicSession from "../components/Incharge/academicSession/AcademicSession";
 import { useAuthStore } from "../store/useAuthStore";
 import FeedbackList from "../components/Incharge/FeedbackList";

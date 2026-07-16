@@ -40,7 +40,7 @@ import {
   Save,
   ClipboardCheck,
 } from "lucide-react";
-import useAdminStore from "../../../../store/useAdminStore";
+import useAdminStore from "../../../../store/admin/index";
 import useManualReviewStore from "../../../../store/useManualReviewStore";
 import ScoreBadge from "./ScoreBadge";
 import EditToolbar from "./EditToolbar";

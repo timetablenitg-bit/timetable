@@ -1,21 +1,6 @@
-// SkeletonEditor.jsx
-//
-// Lets the admin edit the active TimetableSkeleton — the grid of
-// {day, track, period_index, slot_label} cells that drives generation (see
-// utils/skeletonDerivation.js on the backend). Without this, the skeleton is
-// permanently stuck on buildDefaultSkeletonCells().
-//
-// Flow matches skeletonController.js exactly:
-//   1. GET  /skeleton?session_id=          — fetch (or auto-seed) the active one
-//   2. POST /skeleton                      — save as a new DRAFT (is_active: false)
-//   3. PATCH /skeleton/:id/activate        — make a draft the live one
-//
-// This is intentionally a plain table editor, not a drag/drop grid — the
-// skeleton changes rarely, so simplicity beats polish here.
-
 import React, { useEffect, useState, useMemo } from "react";
 import { Loader2, Plus, Trash2, CheckCircle2, Save } from "lucide-react";
-import useAdminStore from "../../../../store/useAdminStore";
+import useAdminStore from "../../../../store/admin/index";
 import { DAYS } from "./constants";
 
 const TIME_LABELS = {

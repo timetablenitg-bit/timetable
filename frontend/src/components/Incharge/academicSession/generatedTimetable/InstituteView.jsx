@@ -89,7 +89,7 @@ import {
   buildBatchIdByName,
 } from "../../../../utils/resolveBatchTrack";
 import { resolveCellEntries, isManualEntry } from "./resolveCellEntries";
-import useAdminStore from "../../../../store/useAdminStore";
+import useAdminStore from "../../../../store/admin/index";
 import {
   Pencil,
   Check,

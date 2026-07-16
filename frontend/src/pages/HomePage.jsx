@@ -17,8 +17,8 @@ const HomePage = () => {
   return (
     <div className="min-h-screen w-full bg-[#0f172a] text-white relative overflow-x-hidden selection:bg-cyan-500/30">
       {/* 🌟 Ambient Background Glows */}
-      <div className="fixed top-[-10%] left-[-10%] w-[500px] h-[500px] bg-purple-600/20 rounded-full blur-[120px] pointer-events-none" />
-      <div className="fixed bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-cyan-600/20 rounded-full blur-[120px] pointer-events-none" />
+      <div className="fixed top-[-10%] left-[-10%] w-125 h-125 bg-purple-600/20 rounded-full blur-[120px] pointer-events-none" />
+      <div className="fixed bottom-[-10%] right-[-10%] w-125 h-125 bg-cyan-600/20 rounded-full blur-[120px] pointer-events-none" />
 
       {/* 🌟 Navbar with Glassmorphism */}
       <nav
@@ -44,7 +44,7 @@ const HomePage = () => {
                   }}
                 />
               </div>
-              <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400 group-hover:from-cyan-400 group-hover:to-blue-400 transition-all duration-300">
+              <span className="text-xl font-bold bg-clip-text text-transparent bg-linear-to-r from-white to-gray-400 group-hover:from-cyan-400 group-hover:to-blue-400 transition-all duration-300">
                 ATMS
               </span>
             </a>
@@ -67,7 +67,7 @@ const HomePage = () => {
             <div className="hidden md:flex items-center space-x-4">
               <a
                 href="/login"
-                className="group relative px-5 py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 rounded-lg font-semibold text-sm shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/40 hover:-translate-y-0.5 transition-all duration-300 overflow-hidden"
+                className="group relative px-5 py-2.5 bg-linear-to-r from-cyan-600 to-blue-600 rounded-lg font-semibold text-sm shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/40 hover:-translate-y-0.5 transition-all duration-300 overflow-hidden"
               >
                 <div className="absolute inset-0 bg-white/20 group-hover:translate-x-full transition-transform duration-500 -skew-x-12 -translate-x-full" />
                 <span>Get Started</span>
@@ -128,7 +128,7 @@ const HomePage = () => {
         {/* Main Title */}
         <h1 className="text-4xl md:text-6xl lg:text-7xl font-extrabold tracking-tight mb-6">
           <span className="block text-white mb-2">Academic Scheduling</span>
-          <span className="bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600">
+          <span className="bg-clip-text text-transparent bg-linear-to-r from-cyan-400 via-blue-500 to-purple-600">
             Reimagined.
           </span>
         </h1>

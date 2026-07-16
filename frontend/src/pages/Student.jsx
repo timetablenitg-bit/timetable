@@ -2,8 +2,6 @@ import React, { useState } from "react";
 import Navbaar from "../components/Navbaar";
 import TableModal from "../components/TableModal";
 import { useAuthStore } from "../store/useAuthStore";
-// import NoticeBoard from "../components/Student/NoticeBoard";
-
 import CourseRegistration from "../components/Student/CourseRegistration";
 
 import {
@@ -24,8 +22,6 @@ import FeedbackForm from "../components/Student/FeedbackForm";
 
 const Student = () => {
   const { authUser } = useAuthStore();
-  // console.log(authUser)
-
   const [openForm, setOpenForm] = useState(
     localStorage.getItem("needsProfileSetup"),
   );

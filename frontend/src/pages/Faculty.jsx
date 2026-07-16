@@ -2,9 +2,6 @@ import React, { useState } from "react";
 import Navbaar from "../components/Navbaar";
 import TableModal from "../components/TableModal";
 import FacultyTimeTableModal from "../components/Faculty/FacultyTimeTableModal";
-import ContactAdmin from "../components/Faculty/ContactAdmin";
-import Leave from "../components/Faculty/Leave";
-import Workload from "../components/Faculty/Workload";
 import { useAuthStore } from "../store/useAuthStore";
 import {
   Menu,
@@ -28,12 +25,6 @@ const Faculty = () => {
         return <FacultyTimeTableModal />;
       case "timetable":
         return <TableModal />;
-      case "leave":
-        return <Leave />;
-      case "workload":
-        return <Workload />;
-      case "request":
-        return <ContactAdmin />;
       default:
         return <div>Select something</div>;
     }
@@ -45,8 +36,6 @@ const Faculty = () => {
     { key: "timetable", label: "Time Table", icon: Table },
     // { key: "attendance", label: "Attendance", icon: ClipboardCheck },
     // { key: "leave", label: "Leave Request", icon: Plane },
-    { key: "workload", label: "Workload", icon: BarChart3 },
-    { key: "request", label: "Request Change", icon: MessageSquare },
   ];
 
   return (

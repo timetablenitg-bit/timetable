@@ -1,27 +1,49 @@
 import CourseRegistration from "../../models/courseRegistrationModel.js";
 import { Batch } from "../../models/batchModel.js";
+import { AcademicSession } from "../../models/academicSessionModel.js";
 import User from "../../models/userModel.js";
 
 export const getRegistrationOverview = async (req, res) => {
   try {
     const { sessionId } = req.params;
 
+    const session = await AcademicSession.findById(sessionId).lean();
+    if (!session) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Academic session not found" });
+    }
+
+    if (!session.isActive) {
+      return res
+        .status(400)
+        .json({ success: false, message: "This session isn't active" });
+    }
+
+    // ODD term -> semesters 1,3,5,7 | EVEN term -> semesters 2,4,6,8
+    const semesterParity = session.term === "ODD" ? 1 : 0;
+
     const registrations = await CourseRegistration.find({ session: sessionId })
       .populate("backlogCourses.course")
       .lean();
 
-    const batchIds = [...new Set(registrations.map((r) => r.batch.toString()))];
-    const batches = await Batch.find({ _id: { $in: batchIds } }).lean();
-
     const regMap = new Map(registrations.map((r) => [r.student.toString(), r]));
 
-    const result = await Promise.all(
+    // Batches are derived from the session's term parity, NOT from existing
+    // registrations. This ensures batches with zero registrations still show up.
+    const batches = await Batch.find({
+      $expr: { $eq: [{ $mod: ["$semester", 2] }, semesterParity] },
+    }).lean();
+
+    const overview = await Promise.all(
       batches.map(async (batch) => {
+        // isActive filter removed: registered/inactive students were being
+        // silently dropped. All accounts for this department+semester should
+        // appear, regardless of active status.
         const students = await User.find({
           role: "student",
           department: batch.department,
           current_sem: batch.semester,
-          isActive: true,
         })
           .select("username email student_code department current_sem")
           .lean();
@@ -47,6 +69,9 @@ export const getRegistrationOverview = async (req, res) => {
         };
       }),
     );
+
+    // Only return batches that actually have at least one student.
+    const result = overview.filter((entry) => entry.students.length > 0);
 
     res.status(200).json({ success: true, data: result });
   } catch (err) {

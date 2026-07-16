@@ -34,17 +34,17 @@ const Login = () => {
 
       {/* 2. Interactive Cursor Glow */}
       <div
-        className="hidden lg:block fixed pointer-events-none w-[400px] h-[400px] rounded-full transition-transform duration-300 ease-out opacity-20 dark:opacity-10"
+        className="hidden lg:block fixed pointer-events-none w-100 h-100 rounded-full transition-transform duration-300 ease-out opacity-20 dark:opacity-10"
         style={{
           background: `radial-gradient(circle, #6366f1 0%, transparent 70%)`,
           transform: `translate(${mousePosition.x - 200}px, ${mousePosition.y - 200}px)`,
         }}
       />
 
-      <div className="relative z-10 w-full max-w-[380px]">
+      <div className="relative z-10 w-full max-w-95">
         {isLoading ? (
           /* Loader State */
-          <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-2xl rounded-[2.5rem] shadow-2xl p-8 border border-white dark:border-slate-800 flex flex-col items-center justify-center min-h-[350px] animate-in fade-in zoom-in duration-300">
+          <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-2xl rounded-[2.5rem] shadow-2xl p-8 border border-white dark:border-slate-800 flex flex-col items-center justify-center min-h-87.5 animate-in fade-in zoom-in duration-300">
             <CustomLoader variant="indigo" />
           </div>
         ) : (
@@ -77,7 +77,7 @@ const Login = () => {
                 {/* Info Box */}
                 <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700/50">
                   <div className="flex items-start gap-3">
-                    <Mail className="w-4 h-4 text-indigo-600 dark:text-indigo-400 flex-shrink-0 mt-0.5" />
+                    <Mail className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
                     <p className="text-[11px] leading-tight text-slate-600 dark:text-slate-400">
                       Authentication restricted to{" "}
                       <span className="font-bold text-slate-900 dark:text-slate-100 italic">

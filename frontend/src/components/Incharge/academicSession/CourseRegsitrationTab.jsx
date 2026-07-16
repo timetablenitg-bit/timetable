@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, Users } from "lucide-react";
-import useAdminStore from "../../../store/useAdminStore";
+import useAdminStore from "../../../store/admin/index";
 
 const CourseRegistrationTab = ({ session }) => {
   const { fetchRegistrationOverview } = useAdminStore();
@@ -13,11 +13,15 @@ const CourseRegistrationTab = ({ session }) => {
     const load = async () => {
       setLoading(true);
       const data = await fetchRegistrationOverview(session._id);
-      setBatches(data || []);
+      // Sort batches by semester ascending (1 -> 8)
+      const sorted = [...(data || [])].sort(
+        (a, b) => a.batch.semester - b.batch.semester,
+      );
+      setBatches(sorted);
       setLoading(false);
     };
     load();
-  }, [session._id]);
+  }, [fetchRegistrationOverview, session._id]);
 
   const toggleBatch = (batchId) =>
     setOpenBatches((prev) => ({ ...prev, [batchId]: !prev[batchId] }));
@@ -157,12 +161,12 @@ const CourseRegistrationTab = ({ session }) => {
                         >
                           <div className="flex items-center gap-3">
                             <div
-                              className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                              className={`w-2 h-2 rounded-full shrink-0 ${
                                 isCompleted ? "bg-emerald-500" : "bg-red-400"
                               }`}
                             />
                             <div
-                              className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 ${
+                              className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium shrink-0 ${
                                 isCompleted
                                   ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400"
                                   : "bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400"
@@ -213,9 +217,9 @@ const CourseRegistrationTab = ({ session }) => {
                             <table className="w-full text-left table-fixed">
                               <thead>
                                 <tr className="text-[10px] uppercase tracking-widest text-slate-400 border-b border-slate-100 dark:border-slate-800">
-                                  <th className="px-4 py-2 w-[100px]">Code</th>
+                                  <th className="px-4 py-2 w-25">Code</th>
                                   <th className="px-4 py-2">Name</th>
-                                  <th className="px-4 py-2 text-center w-[80px]">
+                                  <th className="px-4 py-2 text-center w-20">
                                     Credits
                                   </th>
                                 </tr>

@@ -15,7 +15,7 @@ import {
   ChevronRight,
   X,
 } from "lucide-react";
-import useAdminStore from "../../../store/useAdminStore";
+import useAdminStore from "../../../store/admin/index";
 
 const COMPONENT_ICONS = {
   lecture: <MonitorPlay size={12} />,

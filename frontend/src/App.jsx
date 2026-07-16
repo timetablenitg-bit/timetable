@@ -1,12 +1,11 @@
 import React, { useEffect } from "react";
 import { Routes, Route } from "react-router-dom";
 import ToastProvider from "./components/toastify";
-import useThemeStore from "./store/useHomeStore";
+import useThemeStore from "./store/useThemeStore";
 import { useAuthStore } from "./store/useAuthStore";
 import ProtectedRoute from "./components/ProtectedRoute";
-
 import Login from "./pages/Login";
-// import Signup from "./pages/Signup";
+import Signup from "./pages/Signup";
 import Student from "./pages/Student";
 import Faculty from "./pages/Faculty";
 import Incharge from "./pages/Incharge";
@@ -15,7 +14,7 @@ import AcceptInvite from "./pages/AcceptInvite";
 import PublicRoute from "./components/PublicRoute";
 import NotFoundRedirect from "./components/NotFoundRedirect";
 import Documentation from "./pages/Documentation";
-// import GenerateTable from "./pages/GenerateTable";
+
 const App = () => {
   // 1. Pull the theme state from Zustand
   const { theme } = useThemeStore();
@@ -70,7 +69,7 @@ const App = () => {
                 <Signup />
               </PublicRoute>
             }
-          /> */}
+          />
           <Route path="/accept-invite" element={<AcceptInvite />} />
 
           {/* --- Protected Routes --- */}

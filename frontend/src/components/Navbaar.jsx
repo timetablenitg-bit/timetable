@@ -10,7 +10,7 @@ import {
   FileText,
   Info,
 } from "lucide-react";
-import useThemeStore from "../store/useHomeStore";
+import useThemeStore from "../store/useThemeStore";
 import Notification from "./Notification";
 import Profile from "./Profile";
 import { useAuthStore } from "../store/useAuthStore";
@@ -25,7 +25,6 @@ const InchargeNavbaar = () => {
   const { theme, toggleTheme } = useThemeStore();
   const navigate = useNavigate();
 
-  // Function to get dashboard path based on user role
   const getDashboardPath = () => {
     const role = authUser?.role;
     switch (role) {
@@ -54,15 +53,10 @@ const InchargeNavbaar = () => {
     }
   };
 
-  // Handle logo click
   const handleLogoClick = () => {
-    // const dashboardPath = getDashboardPath();
-    // console.log("Logo clicked, redirecting to:", dashboardPath);
-    // navigate(dashboardPath);
     navigate("/");
   };
 
-  // Added Lucide icons to the navLinks array
   const navLinks = [
     {
       name: "Documentation",

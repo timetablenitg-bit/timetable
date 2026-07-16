@@ -127,6 +127,7 @@ const CourseAssignmentTab = ({ session, onSave, onAssignmentsChange }) => {
                   data.updateSyncedWith(batch._id, rowId, nextSyncedIds)
                 }
                 onDeleteRow={(rowId) => data.deleteRow(batch._id, rowId)}
+                deletingRowId={data.deletingRowId}
                 onAddRow={() => data.addRow(batch._id)}
                 onSaveBatch={() => save.saveBatchAssignments(batch._id)}
                 isSaving={save.savingBatch === batch._id}
