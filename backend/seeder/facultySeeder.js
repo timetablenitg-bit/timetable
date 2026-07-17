@@ -6,6 +6,34 @@ dotenv.config();
 const MONGO_URI = process.env.MONGO_URI;
 
 const faculties = [
+  //temporary faculty data for seeding
+  { faculty_code: "CF1-APS", name: "Contract Faculty 1", department: "APS" },
+  { faculty_code: "CF2-APS", name: "Contract Faculty 2", department: "APS" },
+  { faculty_code: "CF3-APS", name: "Contract Faculty 3", department: "APS" },
+
+  { faculty_code: "CF1-HSS", name: "Contract Faculty 1", department: "HSS" },
+  { faculty_code: "CF2-HSS", name: "Contract Faculty 2", department: "HSS" },
+  { faculty_code: "CF3-HSS", name: "Contract Faculty 3", department: "HSS" },
+
+  { faculty_code: "CF1-CSE", name: "Contract Faculty 1", department: "CSE" },
+  { faculty_code: "CF2-CSE", name: "Contract Faculty 2", department: "CSE" },
+  { faculty_code: "CF3-CSE", name: "Contract Faculty 3", department: "CSE" },
+
+  { faculty_code: "CF1-CVE", name: "Contract Faculty 1", department: "CVE" },
+  { faculty_code: "CF2-CVE", name: "Contract Faculty 2", department: "CVE" },
+  { faculty_code: "CF3-CVE", name: "Contract Faculty 3", department: "CVE" },
+
+  { faculty_code: "CF1-ECE", name: "Contract Faculty 1", department: "ECE" },
+  { faculty_code: "CF2-ECE", name: "Contract Faculty 2", department: "ECE" },
+  { faculty_code: "CF3-ECE", name: "Contract Faculty 3", department: "ECE" },
+
+  { faculty_code: "CF1-EEE", name: "Contract Faculty 1", department: "EEE" },
+  { faculty_code: "CF2-EEE", name: "Contract Faculty 2", department: "EEE" },
+  { faculty_code: "CF3-EEE", name: "Contract Faculty 3", department: "EEE" },
+
+  { faculty_code: "CF1-MCE", name: "Contract Faculty 1", department: "MCE" },
+  { faculty_code: "CF2-MCE", name: "Contract Faculty 2", department: "MCE" },
+  { faculty_code: "CF3-MCE", name: "Contract Faculty 3", department: "MCE" },
   // ── APS ──────────────────────────────────────────────────────────────────
   { faculty_code: "LS-APS", name: "Dr. L Shangerganesh", department: "APS" },
   { faculty_code: "RR-APS", name: "Dr. Ravi Ragoju", department: "APS" },
@@ -50,8 +78,6 @@ const faculties = [
   { faculty_code: "PS-CSE", name: "Dr. Pravati Swain", department: "CSE" },
   { faculty_code: "VT-CSE", name: "Dr. Veena T", department: "CSE" },
   { faculty_code: "MP-CSE", name: "Dr. Meenakshi Panda", department: "CSE" },
-  { faculty_code: "CF2-CSE", name: "Contract Faculty 2", department: "CSE" },
-  { faculty_code: "CF4-CSE", name: "Contract Faculty 4", department: "CSE" },
 
   // ── CVE ──────────────────────────────────────────────────────────────────
   { faculty_code: "BM-CVE", name: "Dr. Bapi Mondal", department: "CVE" },
