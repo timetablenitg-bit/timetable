@@ -53,26 +53,18 @@ export const getSyncCandidatesForRow = (row, allAssignments, batchId) => {
       .map((a) => {
         const courseCode = a.course_id?.course_code ?? "";
         const courseName = a.course_id?.course_name ?? "";
-        const courseLabel =
-          courseCode && courseName
-            ? `${courseCode} — ${courseName}`
-            : courseCode || courseName || "Course";
         const batchLabel = (a.batch_ids ?? [])
           .map((b) => b.batch_name)
           .join(", ");
-        const facultyId = (a.faculty_id?._id ?? a.faculty_id)?.toString();
         // 🔍 adjust `.name` if your Faculty schema uses a different field
         // (e.g. `full_name`, or `first_name`/`last_name` to join instead)
         const facultyName = a.faculty_id?.name ?? "";
         return {
           _id: a._id,
-          label: facultyName
-            ? `${courseLabel} · ${batchLabel} · ${facultyName}`
-            : `${courseLabel} · ${batchLabel}`,
           course_code: courseCode,
           course_name: courseName,
-          facultyId,
-          facultyName,
+          batch_name: batchLabel || "Unnamed batch",
+          faculty_name: facultyName,
         };
       })
   );

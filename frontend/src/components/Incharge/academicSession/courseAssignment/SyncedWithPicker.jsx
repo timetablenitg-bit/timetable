@@ -31,17 +31,12 @@ const SyncedWithPicker = ({
     .filter((a) => {
       if (!search.trim()) return true;
       const q = search.trim().toLowerCase();
-      const haystack = [
-        a.label,
-        a.course_code,
-        a.course_name,
-        a.course?.course_code,
-        a.course?.course_name,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(q);
+      return (
+        a.course_code?.toLowerCase().includes(q) ||
+        a.course_name?.toLowerCase().includes(q) ||
+        a.batch_name?.toLowerCase().includes(q) ||
+        a.faculty_name?.toLowerCase().includes(q)
+      );
     })
     .sort((a, b) => {
       const aSelected = selectedIds.has(a._id?.toString());
@@ -108,7 +103,7 @@ const SyncedWithPicker = ({
       </button>
 
       {open && (
-        <div className="absolute z-20 right-0 mt-1 w-64 max-h-72 overflow-hidden flex flex-col bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg">
+        <div className="absolute z-20 right-0 mt-1 w-72 max-h-72 overflow-hidden flex flex-col bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg">
           {/* Search input */}
           <div className="p-2 border-b border-gray-100 dark:border-gray-700">
             <div className="relative">
@@ -121,7 +116,7 @@ const SyncedWithPicker = ({
                 autoFocus
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search assignments…"
+                placeholder="Search batch or course…"
                 className="w-full pl-6 pr-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md outline-none focus:ring-2 focus:ring-sky-400 text-gray-700 dark:text-gray-200"
               />
             </div>
@@ -140,16 +135,22 @@ const SyncedWithPicker = ({
               filteredCandidates.map((a) => (
                 <label
                   key={a._id}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs"
+                  className="flex items-start gap-2 px-2 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs"
                 >
                   <input
                     type="checkbox"
                     checked={selectedIds.has(a._id?.toString())}
                     onChange={() => toggle(a._id)}
-                    className="w-3.5 h-3.5 rounded border-gray-300 text-sky-500 focus:ring-sky-400"
+                    className="w-3.5 h-3.5 mt-0.5 rounded border-gray-300 text-sky-500 focus:ring-sky-400"
                   />
-                  <span className="text-gray-700 dark:text-gray-200 truncate">
-                    {a.label}
+                  <span className="flex flex-col leading-tight">
+                    <span className="font-semibold text-sky-700 dark:text-sky-400">
+                      {a.batch_name}
+                    </span>
+                    <span className="text-gray-600 dark:text-gray-300">
+                      {a.course_code} — {a.course_name}
+                      {a.faculty_name ? ` · ${a.faculty_name}` : ""}
+                    </span>
                   </span>
                 </label>
               ))
