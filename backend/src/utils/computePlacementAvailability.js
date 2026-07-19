@@ -75,10 +75,19 @@ export function computePlacementAvailability({
   batchIds,
   facultyId,
   currentAssignmentId,
+  dropCourseAssignmentId,
 }) {
   const batchIdSet = new Set(batchIds.map(String));
   const slotByName = new Map(slots.map((s) => [s.slot_name, s]));
   const currentIdStr = String(currentAssignmentId ?? "");
+  // 🔥 NEW (case 3, manual-placement path) — mirrors slot_generator.py's
+  // _is_drop_pair exemption. Without this, an admin resolving a backlog
+  // course's overflow/unplaced item that has drop_course_id set would see
+  // the dropped current-sem course's own cell reported as "blocked: Batch
+  // already scheduled", even though the engine itself would happily place
+  // them together there. Only the ONE named assignment is exempted — any
+  // other batch conflict in that cell is still a real conflict.
+  const dropIdStr = String(dropCourseAssignmentId ?? "");
 
   // Effective entries for a cell: slot_name-derived entries with any
   // per-cell hidden assignments filtered out, PLUS any manual_entries sitting
@@ -141,11 +150,22 @@ export function computePlacementAvailability({
           (e) => String(e.assignment_id ?? "") !== currentIdStr,
         );
 
-        const batchOccupiedViaSlot = slotEntries.some((e) =>
-          (e.batch_ids ?? []).some((b) => batchIdSet.has(String(b))),
+        // 🔥 NEW (case 3) — an occupant whose assignment_id is the one this
+        // item's backlog students explicitly dropped doesn't count as
+        // occupying the cell for THIS batch; that's the whole point of
+        // marking it dropped.
+        const isDroppedOccupant = (e) =>
+          !!dropIdStr && String(e.assignment_id ?? "") === dropIdStr;
+
+        const batchOccupiedViaSlot = slotEntries.some(
+          (e) =>
+            !isDroppedOccupant(e) &&
+            (e.batch_ids ?? []).some((b) => batchIdSet.has(String(b))),
         );
-        const batchOccupiedViaManual = manualOthers.some((e) =>
-          (e.batch_ids ?? []).some((b) => batchIdSet.has(String(b))),
+        const batchOccupiedViaManual = manualOthers.some(
+          (e) =>
+            !isDroppedOccupant(e) &&
+            (e.batch_ids ?? []).some((b) => batchIdSet.has(String(b))),
         );
 
         if (batchOccupiedViaSlot || batchOccupiedViaManual) {

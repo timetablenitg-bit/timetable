@@ -14,6 +14,8 @@ const makeRow = (overrides = {}) => ({
   duration: 1,
   shared_lab_with: [],
   synced_with: [],
+  drop_course_id: null, // 🔥 NEW
+  parallel_with: [], // 🔥 NEW
   isManual: false,
   assignmentId: undefined,
   _backlogCount: undefined,
@@ -163,6 +165,9 @@ export default function useCourseAssignmentData(session) {
           duration: a.duration ?? 1,
           shared_lab_with: (a.shared_lab_with ?? []).map((c) => c?._id ?? c),
           synced_with: (a.synced_with ?? []).map((s) => s?._id ?? s),
+          // 🔥 NEW
+          drop_course_id: a.drop_course_id?._id ?? a.drop_course_id ?? null,
+          parallel_with: (a.parallel_with ?? []).map((p) => p?._id ?? p),
           assignmentId: a._id,
         });
       });
@@ -297,6 +302,18 @@ export default function useCourseAssignmentData(session) {
               shared_lab_with: (r.shared_lab_with ?? []).filter(
                 (id) => (id?._id ?? id)?.toString() !== assignmentId,
               ),
+              // 🔥 NEW — mirror the local cleanup the same way
+              // synced_with/shared_lab_with are cleaned above, so stale
+              // refs to the deleted assignment don't linger in state
+              // until the next refetch.
+              parallel_with: (r.parallel_with ?? []).filter(
+                (id) => (id?._id ?? id)?.toString() !== assignmentId,
+              ),
+              drop_course_id:
+                (r.drop_course_id?._id ?? r.drop_course_id)?.toString() ===
+                assignmentId
+                  ? null
+                  : r.drop_course_id,
             }));
         }
         return next;
@@ -394,6 +411,99 @@ export default function useCourseAssignmentData(session) {
     }
   };
 
+  // 🔥 NEW — case 4. Straight copy of updateSyncedWith's shape: symmetric
+  // field, so a change on this row needs to also patch every OTHER row
+  // being added/removed, then persist all of them together. Kept as its
+  // own function (rather than parameterizing updateSyncedWith) so the two
+  // stay easy to read/diff independently — they'll likely diverge later
+  // (e.g. parallel_with may eventually get its own validation, like
+  // requiring disjoint course_ids, that synced_with shouldn't have).
+  const updateParallelWith = async (batchId, rowId, nextParallelIds) => {
+    const currentRow = rows[batchId]?.find((r) => r.rowId === rowId);
+    if (!currentRow || !currentRow.assignmentId) return;
+
+    const currentAssignmentId = currentRow.assignmentId.toString();
+    const prevIds = (currentRow.parallel_with ?? []).map((id) =>
+      (id?._id ?? id)?.toString(),
+    );
+    const nextIds = nextParallelIds.map((id) => (id?._id ?? id)?.toString());
+    const added = nextIds.filter((id) => !prevIds.includes(id));
+    const removed = prevIds.filter((id) => !nextIds.includes(id));
+    if (!added.length && !removed.length) return;
+
+    const findRowLocation = (allRows, assignmentId) => {
+      for (const [bId, list] of Object.entries(allRows)) {
+        const r = list.find(
+          (row) => row.assignmentId?.toString() === assignmentId,
+        );
+        if (r) return { batchId: bId, row: r };
+      }
+      return null;
+    };
+
+    const snapshot = rows;
+    const otherUpdates = [...added, ...removed]
+      .map((assignmentId) => {
+        const loc = findRowLocation(snapshot, assignmentId);
+        if (!loc) return null;
+        const shouldHave = added.includes(assignmentId);
+        const ids = new Set(
+          (loc.row.parallel_with ?? []).map((id) =>
+            (id?._id ?? id)?.toString(),
+          ),
+        );
+        if (shouldHave) ids.add(currentAssignmentId);
+        else ids.delete(currentAssignmentId);
+        return {
+          batchId: loc.batchId,
+          rowId: loc.row.rowId,
+          parallel_with: Array.from(ids),
+        };
+      })
+      .filter(Boolean);
+
+    setRows((prev) => {
+      const next = { ...prev };
+      next[batchId] = (next[batchId] ?? []).map((r) =>
+        r.rowId === rowId ? { ...r, parallel_with: nextParallelIds } : r,
+      );
+      otherUpdates.forEach((u) => {
+        next[u.batchId] = (next[u.batchId] ?? []).map((r) =>
+          r.rowId === u.rowId ? { ...r, parallel_with: u.parallel_with } : r,
+        );
+      });
+      return next;
+    });
+
+    try {
+      const payloads = [];
+      const currentPayload = buildRowPayload(
+        { ...currentRow, parallel_with: nextParallelIds },
+        batchId,
+        session?._id,
+      );
+      if (currentPayload) payloads.push(currentPayload);
+
+      otherUpdates.forEach((u) => {
+        const original = snapshot[u.batchId]?.find((r) => r.rowId === u.rowId);
+        if (!original) return;
+        const p = buildRowPayload(
+          { ...original, parallel_with: u.parallel_with },
+          u.batchId,
+          session?._id,
+        );
+        if (p) payloads.push(p);
+      });
+
+      if (payloads.length) {
+        await bulkUpsertCourseAssignments(session._id, payloads);
+        await fetchCourseAssignments({ session_id: session?._id });
+      }
+    } catch {
+      setError("Failed to update the parallel link(s). Please try again.");
+    }
+  };
+
   return {
     isLoading,
     error,
@@ -411,5 +521,6 @@ export default function useCourseAssignmentData(session) {
     deleteRow,
     deletingRowId,
     updateSyncedWith,
+    updateParallelWith, // 🔥 NEW
   };
 }

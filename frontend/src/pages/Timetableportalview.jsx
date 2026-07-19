@@ -12,6 +12,10 @@
 
 import React, { useMemo } from "react";
 import { CalendarDays, Loader2, AlertCircle } from "lucide-react";
+import {
+  resolveCellEntriesGroup,
+  describeCoLocation,
+} from "../components/Incharge/academicSession/generatedTimetable/resolveCellEntries";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -112,39 +116,57 @@ const TimetablePortalView = ({
   }, [presetFaculty, slotsData]);
 
   // ── entry lookups ─────────────────────────────────────────────────────────
-  function entryForBatch(cell, batch) {
-    if (!cell?.slot_name || cell.slot_name === "BREAK") return null;
-    return (
-      (slotMap[cell.slot_name] ?? []).find((e) =>
-        (e.batch_names ?? e.batches ?? []).includes(batch),
-      ) ?? null
+  // Each of these resolves to a GROUP of entries, not a single one — a cell
+  // can legitimately hold more than one entry for the same batch: a backlog
+  // course placed alongside the current-sem course its students dropped
+  // (drop_course_id), or two backlog courses explicitly run in parallel
+  // (parallel_with). The engine places both entries in the SAME
+  // bucket/label on purpose (see resolveCellEntries.js) — picking only the
+  // first match here would silently hide the co-located course from the
+  // very students/faculty it's scheduled for.
+  function entrySub(entry) {
+    return mode === "student"
+      ? (entry.faculty_code ?? "")
+      : (entry.batch_names ?? entry.batches ?? []).join(", ");
+  }
+
+  function groupForBatch(cell, batch) {
+    return resolveCellEntriesGroup(cell, slotMap, batch);
+  }
+
+  // Lab blocks here are only ever keyed by slot_name (no manual/hidden
+  // per-cell overrides at the block level, same as before this change) — a
+  // synthetic cell shim keeps this on the same resolveCellEntriesGroup path
+  // so drop co-location still resolves correctly for lab entries too.
+  function labGroupForBatch(slotName, batch) {
+    if (!slotName) return [];
+    return resolveCellEntriesGroup({ slot_name: slotName }, slotMap, batch);
+  }
+
+  function facultyGroupFromEntries(entries) {
+    return entries.filter(
+      (e) => norm(e.faculty_code ?? e.faculty) === norm(presetFaculty),
     );
   }
 
-  function labEntryForBatch(slotName, batch) {
-    return (
-      (slotMap[slotName] ?? []).find((e) =>
-        (e.batch_names ?? e.batches ?? []).includes(batch),
-      ) ?? null
+  function groupForFaculty(cell) {
+    if (!cell?.slot_name || !facultySlotNames.has(cell.slot_name)) return [];
+    const manual = (cell.manual_entries ?? []).filter(
+      (e) => norm(e.faculty_code ?? e.faculty) === norm(presetFaculty),
+    );
+    if (manual.length) return manual;
+    if (cell.slot_name === "BREAK") return [];
+    const hidden = new Set((cell.hidden_assignment_ids ?? []).map(String));
+    return facultyGroupFromEntries(
+      (slotMap[cell.slot_name] ?? []).filter(
+        (e) => !hidden.has(String(e.assignment_id ?? "")),
+      ),
     );
   }
 
-  function entryForFaculty(cell) {
-    if (!cell?.slot_name || !facultySlotNames.has(cell.slot_name)) return null;
-    return (
-      (slotMap[cell.slot_name] ?? []).find(
-        (e) => norm(e.faculty_code ?? e.faculty) === norm(presetFaculty),
-      ) ?? null
-    );
-  }
-
-  function labEntryForFaculty(slotName) {
-    if (!slotName || !facultySlotNames.has(slotName)) return null;
-    return (
-      (slotMap[slotName] ?? []).find(
-        (e) => norm(e.faculty_code ?? e.faculty) === norm(presetFaculty),
-      ) ?? null
-    );
+  function labGroupForFaculty(slotName) {
+    if (!slotName || !facultySlotNames.has(slotName)) return [];
+    return facultyGroupFromEntries(slotMap[slotName] ?? []);
   }
 
   // ── Cell renderer (shared) ────────────────────────────────────────────────
@@ -170,8 +192,71 @@ const TimetablePortalView = ({
     </td>
   );
 
-  function courseTd(key, slotName, courseCode, sub, isLab, colSpan = 1) {
+  // Renders a cell for a GROUP of entries (usually length 1). When the
+  // group has more than one entry — the drop/parallel co-location case —
+  // it splits the cell into stacked bands, one per entry, each labeled with
+  // why it's sharing the slot. Mirrors BatchTimetableGrid.jsx's rendering
+  // so admin and portal views show the same thing.
+  function courseTd(key, slotName, group, isLab, colSpan = 1) {
     const color = isLab ? LAB_COLOR : slotColor(slotName);
+
+    if (!group.length) {
+      return (
+        <td
+          key={key}
+          colSpan={colSpan}
+          className="border border-gray-100 dark:border-gray-700 px-1 py-1 align-middle"
+          style={{ minWidth: 68 * colSpan }}
+        >
+          {slotName ? (
+            <div
+              className={`rounded-md border px-1.5 py-1 text-center ${color}`}
+            >
+              <p className="text-[11px] font-bold leading-none">{slotName}</p>
+              {isLab && (
+                <p className="text-[8px] mt-0.5 opacity-40 leading-none uppercase tracking-wide">
+                  Lab
+                </p>
+              )}
+            </div>
+          ) : (
+            <span className="text-[10px] text-gray-200 dark:text-gray-700">
+              —
+            </span>
+          )}
+        </td>
+      );
+    }
+
+    if (group.length === 1) {
+      const entry = group[0];
+      const sub = entrySub(entry);
+      return (
+        <td
+          key={key}
+          colSpan={colSpan}
+          className="border border-gray-100 dark:border-gray-700 px-1 py-1 align-middle"
+          style={{ minWidth: 68 * colSpan }}
+        >
+          <div className={`rounded-md border px-1.5 py-1 text-center ${color}`}>
+            <p className="text-[11px] font-bold leading-none">
+              {entry.course_code ?? "—"}
+            </p>
+            {sub && (
+              <p className="text-[9px] mt-0.5 opacity-60 leading-none line-clamp-1">
+                {sub}
+              </p>
+            )}
+            {isLab && (
+              <p className="text-[8px] mt-0.5 opacity-40 leading-none uppercase tracking-wide">
+                Lab
+              </p>
+            )}
+          </div>
+        </td>
+      );
+    }
+
     return (
       <td
         key={key}
@@ -179,18 +264,47 @@ const TimetablePortalView = ({
         className="border border-gray-100 dark:border-gray-700 px-1 py-1 align-middle"
         style={{ minWidth: 68 * colSpan }}
       >
-        <div className={`rounded-md border px-1.5 py-1 text-center ${color}`}>
-          <p className="text-[11px] font-bold leading-none">{courseCode}</p>
-          {sub && (
-            <p className="text-[9px] mt-0.5 opacity-60 leading-none line-clamp-1">
-              {sub}
-            </p>
-          )}
-          {isLab && (
-            <p className="text-[8px] mt-0.5 opacity-40 leading-none uppercase tracking-wide">
-              Lab
-            </p>
-          )}
+        <div className={`rounded-md border overflow-hidden ${color}`}>
+          {group.map((entry, i) => {
+            const coLoc = describeCoLocation(entry, group);
+            const sub = entrySub(entry);
+            return (
+              <div
+                key={entry.assignment_id ?? i}
+                className={`px-1.5 py-0.5 text-center ${
+                  i > 0
+                    ? "border-t border-dashed border-black/10 dark:border-white/10"
+                    : ""
+                }`}
+                title={
+                  coLoc?.kind === "drop"
+                    ? `Shares this slot — drops ${coLoc.peer.course_code ?? coLoc.peer.course}`
+                    : coLoc?.kind === "parallel"
+                      ? "Runs in parallel with another backlog course"
+                      : undefined
+                }
+              >
+                <p className="text-[9px] font-bold leading-none">
+                  {entry.course_code ?? "—"}
+                </p>
+                {sub && (
+                  <p className="text-[7px] mt-0.5 opacity-60 leading-none">
+                    {sub}
+                  </p>
+                )}
+                {coLoc && (
+                  <p className="text-[6.5px] mt-0.5 font-semibold uppercase tracking-wide opacity-70 leading-none">
+                    {coLoc.kind === "drop" ? "⇄ drop" : "∥ parallel"}
+                  </p>
+                )}
+                {isLab && i === 0 && (
+                  <p className="text-[6.5px] mt-0.5 opacity-40 leading-none uppercase tracking-wide">
+                    Lab
+                  </p>
+                )}
+              </div>
+            );
+          })}
         </div>
       </td>
     );
@@ -216,58 +330,39 @@ const TimetablePortalView = ({
 
       // AM lab block (Track 2)
       if (isT2 && amLab && pi === AM_LAB_BLOCK[0]) {
-        const entry =
+        const group =
           mode === "student"
-            ? labEntryForBatch(amLab, presetBatch)
-            : labEntryForFaculty(amLab);
-        const sub =
-          mode === "student"
-            ? (entry?.faculty_code ?? "")
-            : (entry?.batch_names ?? []).join(", ");
-        cells.push(
-          courseTd(key, amLab, entry?.course_code ?? amLab, sub, true, 3),
-        );
+            ? labGroupForBatch(amLab, presetBatch)
+            : labGroupForFaculty(amLab);
+        cells.push(courseTd(key, amLab, group, true, 3));
         skip = 2;
         continue;
       }
 
       // PM lab block (Track 1)
       if (!isT2 && pmLab && pi === PM_LAB_BLOCK[0]) {
-        const entry =
+        const group =
           mode === "student"
-            ? labEntryForBatch(pmLab, presetBatch)
-            : labEntryForFaculty(pmLab);
-        const sub =
-          mode === "student"
-            ? (entry?.faculty_code ?? "")
-            : (entry?.batch_names ?? []).join(", ");
-        cells.push(
-          courseTd(key, pmLab, entry?.course_code ?? pmLab, sub, true, 3),
-        );
+            ? labGroupForBatch(pmLab, presetBatch)
+            : labGroupForFaculty(pmLab);
+        cells.push(courseTd(key, pmLab, group, true, 3));
         skip = 2;
         continue;
       }
 
       // Regular theory cell
       const cell = periodMap[pi] ?? null;
-      const entry =
+      const group =
         mode === "student"
-          ? entryForBatch(cell, presetBatch)
-          : entryForFaculty(cell);
+          ? groupForBatch(cell, presetBatch)
+          : groupForFaculty(cell);
 
-      if (!entry) {
+      if (!group.length) {
         cells.push(emptyTd(key));
         continue;
       }
 
-      const sub =
-        mode === "student"
-          ? (entry.faculty_code ?? "")
-          : (entry.batch_names ?? entry.batches ?? []).join(", ");
-
-      cells.push(
-        courseTd(key, cell.slot_name, entry.course_code ?? "—", sub, false, 1),
-      );
+      cells.push(courseTd(key, cell?.slot_name, group, false, 1));
     }
 
     return cells;
@@ -358,7 +453,7 @@ const TimetablePortalView = ({
       <div className="md:hidden space-y-5">
         {DAYS.map((day) => {
           // Collect visible periods for this day
-          let rows = []; // { timeLabel, courseCode, sub, isLab }
+          let rows = []; // { timeLabel, entries: [...], isLab }
 
           if (mode === "student" && presetBatch) {
             const { map, isT2, pmLab, amLab } = trackInfoForBatch(
@@ -371,24 +466,18 @@ const TimetablePortalView = ({
               skip = 0;
 
               if (isT2 && amLab && pi === AM_LAB_BLOCK[0]) {
-                const e = labEntryForBatch(amLab, presetBatch);
-                if (e)
-                  rows.push({
-                    timeLabel: "9–12",
-                    courseCode: e.course_code ?? amLab,
-                    sub: e.faculty_code ?? "",
-                    isLab: true,
-                  });
+                const group = labGroupForBatch(amLab, presetBatch);
+                if (group.length)
+                  rows.push({ timeLabel: "9–12", entries: group, isLab: true });
                 skip = 2;
                 continue;
               }
               if (!isT2 && pmLab && pi === PM_LAB_BLOCK[0]) {
-                const e = labEntryForBatch(pmLab, presetBatch);
-                if (e)
+                const group = labGroupForBatch(pmLab, presetBatch);
+                if (group.length)
                   rows.push({
                     timeLabel: "14–17",
-                    courseCode: e.course_code ?? pmLab,
-                    sub: e.faculty_code ?? "",
+                    entries: group,
                     isLab: true,
                   });
                 skip = 2;
@@ -396,12 +485,11 @@ const TimetablePortalView = ({
               }
 
               const cell = map[pi] ?? null;
-              const entry = entryForBatch(cell, presetBatch);
-              if (entry)
+              const group = groupForBatch(cell, presetBatch);
+              if (group.length)
                 rows.push({
                   timeLabel: TIME_LABELS[pi],
-                  courseCode: entry.course_code ?? "—",
-                  sub: entry.faculty_code ?? "",
+                  entries: group,
                   isLab: false,
                 });
             }
@@ -418,24 +506,22 @@ const TimetablePortalView = ({
                 skip = 0;
 
                 if (isT2 && amLab && pi === AM_LAB_BLOCK[0]) {
-                  const e = labEntryForFaculty(amLab);
-                  if (e)
+                  const group = labGroupForFaculty(amLab);
+                  if (group.length)
                     rows.push({
                       timeLabel: "9–12",
-                      courseCode: e.course_code ?? amLab,
-                      sub: (e.batch_names ?? []).join(", "),
+                      entries: group,
                       isLab: true,
                     });
                   skip = 2;
                   continue;
                 }
                 if (!isT2 && pmLab && pi === PM_LAB_BLOCK[0]) {
-                  const e = labEntryForFaculty(pmLab);
-                  if (e)
+                  const group = labGroupForFaculty(pmLab);
+                  if (group.length)
                     rows.push({
                       timeLabel: "14–17",
-                      courseCode: e.course_code ?? pmLab,
-                      sub: (e.batch_names ?? []).join(", "),
+                      entries: group,
                       isLab: true,
                     });
                   skip = 2;
@@ -443,12 +529,11 @@ const TimetablePortalView = ({
                 }
 
                 const cell = map[pi] ?? null;
-                const entry = entryForFaculty(cell);
-                if (entry)
+                const group = groupForFaculty(cell);
+                if (group.length)
                   rows.push({
                     timeLabel: TIME_LABELS[pi],
-                    courseCode: entry.course_code ?? "—",
-                    sub: (entry.batch_names ?? entry.batches ?? []).join(", "),
+                    entries: group,
                     isLab: false,
                   });
               }
@@ -471,32 +556,57 @@ const TimetablePortalView = ({
               </div>
               <div className="space-y-1.5">
                 {rows.map((r, i) => {
-                  const color = r.isLab ? LAB_COLOR : slotColor(r.courseCode);
+                  const first = r.entries[0];
+                  const color = r.isLab
+                    ? LAB_COLOR
+                    : slotColor(first.course_code);
                   return (
                     <div key={i} className="flex gap-3 items-center">
                       <span className="text-[10px] w-14 shrink-0 text-gray-400 dark:text-gray-500 font-medium">
                         {r.timeLabel}
                       </span>
                       <div
-                        className={`flex-1 rounded-lg border px-3 py-2 ${color}`}
+                        className={`flex-1 rounded-lg border overflow-hidden ${color}`}
                       >
-                        <div className="flex items-center justify-between gap-2">
-                          <div>
-                            <p className="text-xs font-bold leading-tight">
-                              {r.courseCode}
-                            </p>
-                            {r.sub && (
-                              <p className="text-[10px] mt-0.5 opacity-65 leading-tight">
-                                {r.sub}
-                              </p>
-                            )}
-                          </div>
-                          {r.isLab && (
-                            <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-white/40 border border-current font-semibold shrink-0">
-                              LAB
-                            </span>
-                          )}
-                        </div>
+                        {r.entries.map((entry, j) => {
+                          const coLoc = describeCoLocation(entry, r.entries);
+                          const sub = entrySub(entry);
+                          return (
+                            <div
+                              key={entry.assignment_id ?? j}
+                              className={`px-3 py-2 ${
+                                j > 0
+                                  ? "border-t border-dashed border-black/10 dark:border-white/10"
+                                  : ""
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div>
+                                  <p className="text-xs font-bold leading-tight">
+                                    {entry.course_code ?? "—"}
+                                  </p>
+                                  {sub && (
+                                    <p className="text-[10px] mt-0.5 opacity-65 leading-tight">
+                                      {sub}
+                                    </p>
+                                  )}
+                                  {coLoc && (
+                                    <p className="text-[9px] mt-0.5 font-semibold uppercase tracking-wide opacity-70 leading-tight">
+                                      {coLoc.kind === "drop"
+                                        ? "⇄ drop"
+                                        : "∥ parallel"}
+                                    </p>
+                                  )}
+                                </div>
+                                {r.isLab && j === 0 && (
+                                  <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-white/40 border border-current font-semibold shrink-0">
+                                    LAB
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   );
@@ -515,11 +625,11 @@ const TimetablePortalView = ({
             );
             return (
               !Object.values(map).some(
-                (c) => c.slot_name && entryForBatch(c, presetBatch),
+                (c) => c.slot_name && groupForBatch(c, presetBatch).length,
               ) &&
               !(isT2
-                ? labEntryForBatch(amLab, presetBatch)
-                : labEntryForBatch(pmLab, presetBatch))
+                ? labGroupForBatch(amLab, presetBatch).length
+                : labGroupForBatch(pmLab, presetBatch).length)
             );
           }
           if (mode === "faculty" && presetFaculty) {
@@ -697,8 +807,10 @@ const TimetablePortalView = ({
             );
             const labSlot = isT2 ? amLab : pmLab;
             return (
-              Object.values(map).some((c) => entryForBatch(c, presetBatch)) ||
-              (labSlot && labEntryForBatch(labSlot, presetBatch))
+              Object.values(map).some(
+                (c) => groupForBatch(c, presetBatch).length,
+              ) ||
+              (labSlot && labGroupForBatch(labSlot, presetBatch).length)
             );
           });
           return !hasAnything ? (

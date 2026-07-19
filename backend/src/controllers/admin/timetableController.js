@@ -145,6 +145,13 @@ export const generateTimetable = async (req, res) => {
           batch_names: e.batches,
           batch_ids: e.batch_ids ?? [],
           component_type: e.component_type ?? "lecture",
+          // 🔥 NEW — the engine already computes these (case 3 / case 4)
+          // but they were being dropped here since the mapping only ever
+          // picked the fields above. Without them the frontend can't tell
+          // a deliberate drop/parallel co-location apart from any other
+          // reason two entries land in the same bucket.
+          drop_course_id: e.drop_course_id ?? null,
+          parallel_group_id: e.parallel_group_id ?? null,
         })),
       }),
     );

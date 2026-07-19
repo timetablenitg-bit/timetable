@@ -70,12 +70,52 @@ export const getSyncCandidatesForRow = (row, allAssignments, batchId) => {
   );
 };
 
+// 🔥 NEW — case 3 (>2 backlogs, student has to drop a current-sem course).
+// Candidates are the batch's OWN already-assigned, non-backlog rows — you
+// drop a current-sem course, not another backlog course.
+export const getDropCourseCandidatesForRow = (row, allAssignments, batchId) => {
+  return (allAssignments ?? [])
+    .filter((a) => a._id?.toString() !== row.assignmentId?.toString())
+    .filter((a) => a.assignment_type !== "backlog")
+    .filter((a) =>
+      (a.batch_ids ?? []).some(
+        (b) => (b?._id ?? b)?.toString() === batchId?.toString(),
+      ),
+    )
+    .map((a) => ({
+      _id: a._id,
+      course_code: a.course_id?.course_code ?? "",
+      course_name: a.course_id?.course_name ?? "",
+      faculty_name: a.faculty_id?.name ?? "",
+    }));
+};
+
+// 🔥 NEW — case 4 (disjoint backlog groups sharing a slot). Candidates are
+// other saved BACKLOG rows, in ANY batch — the whole point is that Maths
+// backlog in SecA can run parallel to Chem backlog in SecB.
+export const getParallelCandidatesForRow = (row, allAssignments, batchId) => {
+  return (allAssignments ?? [])
+    .filter((a) => a._id?.toString() !== row.assignmentId?.toString())
+    .filter((a) => a.assignment_type === "backlog")
+    .map((a) => ({
+      _id: a._id,
+      course_code: a.course_id?.course_code ?? "",
+      course_name: a.course_id?.course_name ?? "",
+      batch_name:
+        (a.batch_ids ?? []).map((b) => b.batch_name).join(", ") ||
+        "Unnamed batch",
+      faculty_name: a.faculty_id?.name ?? "",
+    }));
+};
+
 export const buildRowPayload = (row, batchId, sessionId) => {
   const isSlot = row.course?.is_elective_slot;
   const isComplete = isSlot
     ? row.elective_course && row.faculty
     : row.course && row.faculty;
   if (!isComplete) return null;
+
+  const isBacklog = row.assignment_type === "backlog";
 
   return {
     ...(row.assignmentId ? { _id: row.assignmentId } : {}),
@@ -92,6 +132,10 @@ export const buildRowPayload = (row, batchId, sessionId) => {
     shared_lab_with:
       row.component_type === "lab" ? (row.shared_lab_with ?? []) : [],
     synced_with: row.synced_with ?? [],
+    // 🔥 NEW — only send these for backlog rows, same "keep backend
+    // validation happy even with stale client state" reasoning as above
+    drop_course_id: isBacklog ? (row.drop_course_id ?? null) : null,
+    parallel_with: isBacklog ? (row.parallel_with ?? []) : [],
     ...(row.sessions_per_week != null
       ? { sessions_per_week: row.sessions_per_week }
       : {}),

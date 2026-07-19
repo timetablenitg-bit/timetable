@@ -16,6 +16,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import useAdminStore from "../../../../store/admin/index"; // ← adjust path to your store
+import { describeCoLocation } from "./resolveCellEntries";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -284,6 +285,20 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
     (slotName, batch) => {
       const sl = slots.find((s) => s.slot_name === slotName);
       return sl?.entries.find((e) => getBatches(e).includes(batch)) ?? null;
+    },
+    [slots],
+  );
+
+  // NEW — every entry this batch has in this slot, not just the first. A
+  // slot can legitimately hold more than one entry for the same batch
+  // (drop_course_id / parallel_with co-location) — the drag/drop logic
+  // below is index-based and only ever moves the first match, but the
+  // extra co-located entries still need to be visible so the admin doesn't
+  // edit this cell without realizing something else is sharing it.
+  const getEntryGroup = useCallback(
+    (slotName, batch) => {
+      const sl = slots.find((s) => s.slot_name === slotName);
+      return sl?.entries.filter((e) => getBatches(e).includes(batch)) ?? [];
     },
     [slots],
   );
@@ -691,6 +706,8 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
                 </td>
                 {slots.map((sl) => {
                   const entry = getEntry(sl.slot_name, batch);
+                  const entryGroup = getEntryGroup(sl.slot_name, batch);
+                  const coLocatedExtras = entryGroup.slice(1);
                   const entryIdx = sl.entries.findIndex((e) =>
                     getBatches(e).includes(batch),
                   );
@@ -788,6 +805,48 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
                           </p>
                         )}
                       </div>
+                      {/* NEW — co-located entries (drop_course_id /
+                          parallel_with) for this same batch+slot. These
+                          share the cell deliberately; the index-based
+                          drag/drop above only ever targets the primary
+                          entry, so extras render read-only rather than
+                          being silently hidden. */}
+                      {coLocatedExtras.map((extra, i) => {
+                        const extraCode =
+                          extra.course_code ?? extra.course ?? "—";
+                        const extraFac =
+                          extra.faculty_code ?? extra.faculty ?? "";
+                        const coLoc = describeCoLocation(extra, entryGroup);
+                        return (
+                          <div
+                            key={extra.assignment_id ?? i}
+                            className={`mt-1 rounded-lg px-2 py-1.5 text-center border border-dashed border-black/10 dark:border-white/10 ${colorForSlot(sl.slot_name)}`}
+                            title={
+                              coLoc?.kind === "drop"
+                                ? `Shares this slot — drops ${coLoc.peer.course_code ?? coLoc.peer.course}`
+                                : coLoc?.kind === "parallel"
+                                  ? "Runs in parallel with another backlog course"
+                                  : "Shares this slot"
+                            }
+                          >
+                            <p className="text-[10px] font-semibold leading-none">
+                              {extraCode}
+                            </p>
+                            {extraFac && (
+                              <p className="text-[8px] mt-0.5 opacity-60 leading-none">
+                                {extraFac}
+                              </p>
+                            )}
+                            {coLoc && (
+                              <p className="text-[7px] mt-0.5 font-semibold uppercase tracking-wide opacity-70 leading-none">
+                                {coLoc.kind === "drop"
+                                  ? "⇄ drop"
+                                  : "∥ parallel"}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
                     </td>
                   );
                 })}

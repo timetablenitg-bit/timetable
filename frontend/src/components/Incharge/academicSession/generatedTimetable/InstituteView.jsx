@@ -88,7 +88,12 @@ import {
   resolveBatchTrack,
   buildBatchIdByName,
 } from "../../../../utils/resolveBatchTrack";
-import { resolveCellEntries, isManualEntry } from "./resolveCellEntries";
+import {
+  resolveCellEntries,
+  resolveCellEntriesGroup,
+  describeCoLocation,
+  isManualEntry,
+} from "./resolveCellEntries";
 import useAdminStore from "../../../../store/admin/index";
 import {
   Pencil,
@@ -332,6 +337,15 @@ const InstituteView = ({ scheduleData, slotsData }) => {
   const getEntryForBatchPeriod = (batch, cell) =>
     resolveCellEntries(cell, slotMap, batch);
 
+  // NEW — the full set of entries this batch has in this cell, not just the
+  // first one. A cell can legitimately hold more than one entry for the same
+  // batch: a backlog course explicitly placed alongside the current-sem
+  // course it drops (drop_course_id), or two backlog courses explicitly run
+  // in parallel (parallel_with). Both need to render, not just whichever one
+  // resolveCellEntries happened to pick.
+  const getEntryGroupForBatchPeriod = (batch, cell) =>
+    resolveCellEntriesGroup(cell, slotMap, batch);
+
   // CHANGED — now checks the anchor cell's manual_entries first (same
   // priority as resolveCellEntries), falling back to the raw slot_name
   // lookup. Without this, a lab moved via the new editor would never
@@ -479,11 +493,13 @@ const InstituteView = ({ scheduleData, slotsData }) => {
       }
 
       const cell = map[pi] ?? null;
-      const entry = getEntryForBatchPeriod(batch, cell);
+      const entryGroup = getEntryGroupForBatchPeriod(batch, cell).filter((e) =>
+        facultyMatches(e.faculty_code ?? e.faculty),
+      );
       const name = cell?.slot_name;
 
       if (
-        !entry &&
+        !entryGroup.length &&
         (!name ||
           name === "BREAK" ||
           name === null ||
@@ -493,37 +509,95 @@ const InstituteView = ({ scheduleData, slotsData }) => {
         return emptyCell(pi);
       }
 
-      if (!entry) return emptyCell(pi);
+      if (!entryGroup.length) return emptyCell(pi);
 
-      if (!facultyMatches(entry.faculty_code ?? entry.faculty)) {
-        return emptyCell(pi);
+      if (entryGroup.length === 1) {
+        const entry = entryGroup[0];
+        const manual = cell ? isManualEntry(cell, entry) : false;
+        const code = entry.course_code ?? entry.course ?? "—";
+        const fac = entry.faculty_code ?? entry.faculty ?? "";
+        const color = manual ? MANUAL_COLOR : slotColor(name);
+
+        return (
+          <td
+            key={pi}
+            className="border border-gray-100 dark:border-gray-700 px-1 py-1"
+          >
+            <div
+              className={`rounded-md border px-1.5 py-1 text-center relative ${color}`}
+            >
+              {manual && (
+                <span
+                  title="Manually placed"
+                  className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 flex items-center justify-center rounded-full bg-fuchsia-500 text-white text-[8px] font-bold leading-none"
+                >
+                  M
+                </span>
+              )}
+              <p className="text-[11px] font-bold leading-none">{code}</p>
+              {fac && (
+                <p className="text-[9px] mt-0.5 leading-none opacity-60">
+                  {fac}
+                </p>
+              )}
+            </div>
+          </td>
+        );
       }
 
-      const manual = cell ? isManualEntry(cell, entry) : false;
-      const code = entry.course_code ?? entry.course ?? "—";
-      const fac = entry.faculty_code ?? entry.faculty ?? "";
-      const color = manual ? MANUAL_COLOR : slotColor(name);
-
+      // More than one entry for this batch in this cell — a drop_course_id
+      // or parallel_with co-location. Render both, split by a dashed
+      // divider, each tagged with why it's sharing the cell.
       return (
         <td
           key={pi}
           className="border border-gray-100 dark:border-gray-700 px-1 py-1"
         >
-          <div
-            className={`rounded-md border px-1.5 py-1 text-center relative ${color}`}
-          >
-            {manual && (
-              <span
-                title="Manually placed"
-                className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 flex items-center justify-center rounded-full bg-fuchsia-500 text-white text-[8px] font-bold leading-none"
-              >
-                M
-              </span>
-            )}
-            <p className="text-[11px] font-bold leading-none">{code}</p>
-            {fac && (
-              <p className="text-[9px] mt-0.5 leading-none opacity-60">{fac}</p>
-            )}
+          <div className="rounded-md border overflow-hidden">
+            {entryGroup.map((entry, i) => {
+              const manual = cell ? isManualEntry(cell, entry) : false;
+              const code = entry.course_code ?? entry.course ?? "—";
+              const fac = entry.faculty_code ?? entry.faculty ?? "";
+              const color = manual ? MANUAL_COLOR : slotColor(name);
+              const coLoc = describeCoLocation(entry, entryGroup);
+              return (
+                <div
+                  key={entry.assignment_id ?? i}
+                  className={`px-1.5 py-0.5 text-center relative ${color} ${
+                    i > 0
+                      ? "border-t border-dashed border-black/10 dark:border-white/10"
+                      : ""
+                  }`}
+                  title={
+                    coLoc?.kind === "drop"
+                      ? `Shares this slot — drops ${coLoc.peer.course_code ?? coLoc.peer.course}`
+                      : coLoc?.kind === "parallel"
+                        ? "Runs in parallel with another backlog course"
+                        : undefined
+                  }
+                >
+                  {manual && (
+                    <span
+                      title="Manually placed"
+                      className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 flex items-center justify-center rounded-full bg-fuchsia-500 text-white text-[8px] font-bold leading-none"
+                    >
+                      M
+                    </span>
+                  )}
+                  <p className="text-[10px] font-bold leading-none">{code}</p>
+                  {fac && (
+                    <p className="text-[8px] mt-0.5 leading-none opacity-60">
+                      {fac}
+                    </p>
+                  )}
+                  {coLoc && (
+                    <p className="text-[6.5px] mt-0.5 font-semibold uppercase tracking-wide opacity-70 leading-none">
+                      {coLoc.kind === "drop" ? "⇄ drop" : "∥ parallel"}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </td>
       );
@@ -789,7 +863,16 @@ const InstituteView = ({ scheduleData, slotsData }) => {
   // CHANGED — now carries slotName + isManual so the edit-mode cell
   // renderer can use the same slotColor/MANUAL_COLOR logic as the other
   // two views instead of falling back to an unmatched/black block.
-  const makeSlot = (day, track, periods, isLab, entry, slotName, isManual) => {
+  const makeSlot = (
+    day,
+    track,
+    periods,
+    isLab,
+    entry,
+    slotName,
+    isManual,
+    forceLocked = false,
+  ) => {
     const batchNames = entry?.batch_names ?? entry?.batches ?? [];
     return {
       key: `${day}::${track}::${periods[0]}`,
@@ -806,7 +889,14 @@ const InstituteView = ({ scheduleData, slotsData }) => {
             component_type: entry.component_type ?? (isLab ? "lab" : "lecture"),
           }
         : null,
-      isMultiBatch: batchNames.length > 1,
+      // Locked either because the underlying entry spans more than one
+      // batch (joint session — pre-existing behaviour), or because this
+      // cell holds a drop_course_id / parallel_with co-location for this
+      // batch that the single-entry drag/drop editor can't safely
+      // represent (NEW).
+      isMultiBatch: batchNames.length > 1 || forceLocked,
+      lockReason:
+        batchNames.length > 1 ? "joint" : forceLocked ? "colocated" : null,
     };
   };
 
@@ -875,10 +965,26 @@ const InstituteView = ({ scheduleData, slotsData }) => {
         continue;
       }
       const cell = map[pi] ?? null;
-      const entry = getEntryForBatchPeriod(batch, cell);
+      const entryGroup = getEntryGroupForBatchPeriod(batch, cell);
+      const entry = entryGroup[0] ?? null;
       const manual = cell ? isManualEntry(cell, entry) : false;
+      // A cell holding more than one entry for this batch is a
+      // drop_course_id / parallel_with co-location — the freeform
+      // drag/swap editor only understands one course per cell, so moving
+      // or clearing it here would silently break the pairing the admin
+      // explicitly set up. Lock it, same treatment as a joint session.
+      const coLocated = entryGroup.length > 1;
       slots.push(
-        makeSlot(day, track, [pi], false, entry, cell?.slot_name, manual),
+        makeSlot(
+          day,
+          track,
+          [pi],
+          false,
+          entry,
+          cell?.slot_name,
+          manual,
+          coLocated,
+        ),
       );
       pi++;
     }
@@ -1166,7 +1272,11 @@ const InstituteView = ({ scheduleData, slotsData }) => {
                                 <Lock
                                   size={10}
                                   className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 p-0.5 rounded-full bg-gray-500 text-white"
-                                  title="Joint session shared with other batches — edit from Slots tab"
+                                  title={
+                                    slot.lockReason === "colocated"
+                                      ? "Shares this slot with another course (drop/parallel backlog pairing) — edit from Slots tab"
+                                      : "Joint session shared with other batches — edit from Slots tab"
+                                  }
                                 />
                               ) : (
                                 <button

@@ -69,7 +69,11 @@
 import React, { useMemo } from "react";
 import { DAYS, TIME_LABELS, LUNCH_PI } from "./constants";
 import { slotColor } from "./colors";
-import { resolveCellEntries, isManualEntry } from "./resolveCellEntries";
+import {
+  resolveCellEntriesGroup,
+  describeCoLocation,
+  isManualEntry,
+} from "./resolveCellEntries";
 
 const STATUS_STYLE = {
   free: "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-700 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 cursor-pointer",
@@ -145,7 +149,13 @@ const BatchTimetableGrid = ({
 
     const trackCells = scheduleData?.grid?.[day]?.[`track${track}`] ?? [];
     const cell = trackCells.find((c) => c.period_index === pi) ?? null;
-    const entry = resolveCellEntries(cell, slotMap, batchName);
+    // A cell can legitimately hold more than one entry for this batch — a
+    // backlog course dropped alongside the current-sem course it replaces
+    // (drop_course_id), or two backlog courses explicitly run in parallel
+    // (parallel_with). Resolve the whole group so neither gets silently
+    // hidden behind the other.
+    const entryGroup = resolveCellEntriesGroup(cell, slotMap, batchName);
+    const entry = entryGroup[0] ?? null;
     const manual = entry && cell ? isManualEntry(cell, entry) : false;
     const isTarget =
       !!entry &&
@@ -177,32 +187,74 @@ const BatchTimetableGrid = ({
         onClick={clickable ? () => onCellClick?.(day, pi, track) : undefined}
       >
         {code ? (
-          <div
-            className={`rounded-md px-1.5 py-1 relative ${
-              manual ? MANUAL_COLOR : slotColor(cell.slot_name)
-            } ${isTarget ? TARGET_RING : ""}`}
-          >
-            {manual && (
-              <span
-                title="Manually placed"
-                className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 flex items-center justify-center rounded-full bg-fuchsia-500 text-white text-[8px] font-bold leading-none"
-              >
-                M
-              </span>
-            )}
-            {isTarget && (
-              <span
-                title="Existing session for this course"
-                className="absolute -bottom-1.5 -right-1.5 w-3.5 h-3.5 flex items-center justify-center rounded-full bg-indigo-500 text-white text-[8px] font-bold leading-none"
-              >
-                •
-              </span>
-            )}
-            <p className="text-[10px] font-bold leading-none">{code}</p>
-            {fac && (
-              <p className="text-[8px] mt-0.5 opacity-60 leading-none">{fac}</p>
-            )}
-          </div>
+          entryGroup.length > 1 ? (
+            <div
+              className={`rounded-md relative overflow-hidden ${isTarget ? TARGET_RING : ""}`}
+            >
+              {entryGroup.map((e, i) => {
+                const coLoc = describeCoLocation(e, entryGroup);
+                const eManual = isManualEntry(cell, e);
+                const eCode = e.course_code ?? e.course;
+                const eFac = e.faculty_code ?? e.faculty;
+                return (
+                  <div
+                    key={e.assignment_id ?? i}
+                    className={`px-1.5 py-0.5 text-center ${
+                      eManual ? MANUAL_COLOR : slotColor(cell.slot_name)
+                    } ${i > 0 ? "border-t border-dashed border-black/10 dark:border-white/10" : ""}`}
+                    title={
+                      coLoc?.kind === "drop"
+                        ? `Shares this slot — drops ${coLoc.peer.course_code ?? coLoc.peer.course}`
+                        : coLoc?.kind === "parallel"
+                          ? "Runs in parallel with another backlog course"
+                          : undefined
+                    }
+                  >
+                    <p className="text-[9px] font-bold leading-none">{eCode}</p>
+                    {eFac && (
+                      <p className="text-[7px] mt-0.5 opacity-60 leading-none">
+                        {eFac}
+                      </p>
+                    )}
+                    {coLoc && (
+                      <p className="text-[6.5px] mt-0.5 font-semibold uppercase tracking-wide opacity-70 leading-none">
+                        {coLoc.kind === "drop" ? "⇄ drop" : "∥ parallel"}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div
+              className={`rounded-md px-1.5 py-1 relative ${
+                manual ? MANUAL_COLOR : slotColor(cell.slot_name)
+              } ${isTarget ? TARGET_RING : ""}`}
+            >
+              {manual && (
+                <span
+                  title="Manually placed"
+                  className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 flex items-center justify-center rounded-full bg-fuchsia-500 text-white text-[8px] font-bold leading-none"
+                >
+                  M
+                </span>
+              )}
+              {isTarget && (
+                <span
+                  title="Existing session for this course"
+                  className="absolute -bottom-1.5 -right-1.5 w-3.5 h-3.5 flex items-center justify-center rounded-full bg-indigo-500 text-white text-[8px] font-bold leading-none"
+                >
+                  •
+                </span>
+              )}
+              <p className="text-[10px] font-bold leading-none">{code}</p>
+              {fac && (
+                <p className="text-[8px] mt-0.5 opacity-60 leading-none">
+                  {fac}
+                </p>
+              )}
+            </div>
+          )
         ) : mode === "place" ? (
           <span className="text-[9px] font-semibold">
             {selected

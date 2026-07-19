@@ -5,10 +5,14 @@ import FacultyCell from "./FacultyCell";
 import CompactSelect from "./CompactSelect";
 import SharedLabPicker from "./SharedLabPicker";
 import SyncedWithPicker from "./SyncedWithPicker";
+import DropCoursePicker from "./DropCoursePicker";
+import ParallelWithPicker from "./ParallelWithPicker";
 import {
   getFacultyPoolForRow,
   getLabAssignmentPoolForRow,
   getSyncCandidatesForRow,
+  getDropCourseCandidatesForRow,
+  getParallelCandidatesForRow,
 } from "./RowHelpers";
 import { ASSIGNMENT_TYPE_OPTIONS, COMPONENT_TYPE_OPTIONS } from "./constants";
 
@@ -24,8 +28,9 @@ const CourseAssignmentRow = ({
   onUpdateRow, // (patch) => void
   onComponentTypeChange, // (component_type) => void
   onSyncedWithChange, // (nextSyncedWithIds) => void
+  onParallelWithChange, // (nextParallelIds) => void  🔥 NEW
   onDeleteRow, // () => void
-  isDeleting, // 🔥 NEW — true while this row's delete request is in flight
+  isDeleting, // 🔥 true while this row's delete request is in flight
 }) => {
   const rowClasses = row.course?.is_elective_slot
     ? "bg-violet-50/40 dark:bg-violet-900/10 hover:bg-violet-50 dark:hover:bg-violet-900/20"
@@ -34,6 +39,8 @@ const CourseAssignmentRow = ({
       : "hover:bg-gray-50 dark:hover:bg-gray-700/30";
 
   const isLab = row.component_type === "lab";
+  const isBacklog = row.assignment_type === "backlog"; // 🔥 NEW
+
   // 🔥 assignment-based pool — lets rows in DIFFERENT batches running the
   // SAME lab course (e.g. Chemistry Lab for SecA and SecB) still be linked,
   // since each batch's session is a distinct CourseAssignment.
@@ -47,6 +54,14 @@ const CourseAssignmentRow = ({
     allAssignments,
     batch._id,
   );
+
+  // 🔥 NEW — case 3/4 candidate pools, only computed for backlog rows
+  const dropCandidates = isBacklog
+    ? getDropCourseCandidatesForRow(row, allAssignments, batch._id)
+    : [];
+  const parallelCandidates = isBacklog
+    ? getParallelCandidatesForRow(row, allAssignments, batch._id)
+    : [];
 
   // 🔥 Warn the admin before linking two assignments taught by the same
   // faculty — syncing them effectively combines the classes into one.
@@ -111,7 +126,17 @@ const CourseAssignmentRow = ({
       <td className="px-3 py-3 align-middle">
         <CompactSelect
           value={row.assignment_type}
-          onChange={(v) => onUpdateRow({ assignment_type: v })}
+          onChange={(v) =>
+            onUpdateRow({
+              assignment_type: v,
+              // 🔥 NEW — clear backlog-only fields when switching away, so
+              // stale state doesn't linger client-side (server would reject
+              // them on save anyway)
+              ...(v !== "backlog"
+                ? { drop_course_id: null, parallel_with: [] }
+                : {}),
+            })
+          }
           options={ASSIGNMENT_TYPE_OPTIONS}
           className="w-full"
         />
@@ -149,7 +174,8 @@ const CourseAssignmentRow = ({
         />
       </td>
 
-      {/* Links — lab room + slot sync, compact icon buttons, same row */}
+      {/* Links — lab room + slot sync + (backlog) drop/parallel, compact
+          icon buttons, same row */}
       <td className="px-3 py-3 align-middle">
         <div className="flex items-center justify-center gap-1.5">
           {isLab && (
@@ -167,6 +193,22 @@ const CourseAssignmentRow = ({
             disabled={!row.assignmentId}
             compact
           />
+          {/* 🔥 NEW — only backlog rows get these two */}
+          {isBacklog && (
+            <>
+              <DropCoursePicker
+                candidates={dropCandidates}
+                value={row.drop_course_id}
+                onChange={(id) => onUpdateRow({ drop_course_id: id })}
+              />
+              <ParallelWithPicker
+                candidates={parallelCandidates}
+                value={row.parallel_with}
+                onChange={onParallelWithChange}
+                disabled={!row.assignmentId}
+              />
+            </>
+          )}
         </div>
       </td>
 

@@ -70,6 +70,33 @@ const courseAssignmentSchema = new mongoose.Schema(
         ref: "CourseAssignment",
       },
     ],
+
+    // 🔥 NEW — case 3 (>2 backlogs, student has to drop a current-sem
+    // course). Points at the batch's OWN current-sem CourseAssignment that
+    // these backlog students are expected to drop. One-directional by
+    // design: many backlog rows can point at the same dropped course, so
+    // there's no single back-link slot to store on the dropped side. The
+    // frontend computes the reverse view by filtering allAssignments for
+    // drop_course_id === thisId. Only meaningful when
+    // assignment_type === "backlog".
+    drop_course_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "CourseAssignment",
+      default: null,
+    },
+
+    // 🔥 NEW — case 4 (disjoint backlog groups sharing a slot, e.g. Maths
+    // backlog + Chem backlog run at the same time because no student has
+    // both). Symmetric like synced_with, but semantically different:
+    // synced_with COMBINES two sessions into one class; parallel_with keeps
+    // them as separate sessions/faculty that are just allowed to occupy the
+    // SAME timeslot. Only meaningful when assignment_type === "backlog".
+    parallel_with: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "CourseAssignment",
+      },
+    ],
   },
   { timestamps: true },
 );

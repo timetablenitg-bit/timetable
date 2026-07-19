@@ -44,6 +44,25 @@ export const fetchCourseAssignments = async (req, res) => {
           { path: "batch_ids", select: "batch_name" },
         ],
       })
+      // 🔥 NEW — case 3: the current-sem assignment these backlog students drop
+      .populate({
+        path: "drop_course_id",
+        select: "course_id batch_ids faculty_id",
+        populate: [
+          { path: "course_id", select: "course_code course_name" },
+          { path: "faculty_id", select: "name" },
+        ],
+      })
+      // 🔥 NEW — case 4: other backlog assignments sharing this slot
+      .populate({
+        path: "parallel_with",
+        select: "course_id batch_ids faculty_id",
+        populate: [
+          { path: "course_id", select: "course_code course_name" },
+          { path: "batch_ids", select: "batch_name" },
+          { path: "faculty_id", select: "name" },
+        ],
+      })
       .sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -72,6 +91,8 @@ export const createCourseAssignment = async (req, res) => {
       component_type,
       shared_lab_with,
       synced_with,
+      drop_course_id, // 🔥 NEW
+      parallel_with, // 🔥 NEW
     } = req.body;
 
     // ✅ Required fields
@@ -93,6 +114,18 @@ export const createCourseAssignment = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "shared_lab_with can only be set on lab components",
+      });
+    }
+
+    // 🔥 NEW — drop_course_id / parallel_with only make sense for backlog rows
+    if (
+      (drop_course_id || parallel_with?.length) &&
+      assignment_type !== "backlog"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "drop_course_id and parallel_with can only be set on backlog assignments",
       });
     }
 
@@ -119,6 +152,8 @@ export const createCourseAssignment = async (req, res) => {
       component_type,
       shared_lab_with: shared_lab_with || [],
       synced_with: synced_with || [],
+      drop_course_id: drop_course_id || null, // 🔥 NEW
+      parallel_with: parallel_with || [], // 🔥 NEW
     });
 
     // 🔥 keep synced_with symmetric — back-link this assignment on its peers
@@ -136,6 +171,15 @@ export const createCourseAssignment = async (req, res) => {
       await CourseAssignment.updateMany(
         { _id: { $in: shared_lab_with } },
         { $addToSet: { shared_lab_with: assignment._id } },
+      );
+    }
+
+    // 🔥 NEW — keep parallel_with symmetric, same pattern as above.
+    // drop_course_id is intentionally one-directional, no back-link here.
+    if (parallel_with?.length) {
+      await CourseAssignment.updateMany(
+        { _id: { $in: parallel_with } },
+        { $addToSet: { parallel_with: assignment._id } },
       );
     }
 
@@ -182,6 +226,8 @@ export const updateCourseAssignment = async (req, res) => {
       "component_type",
       "shared_lab_with",
       "synced_with",
+      "drop_course_id", // 🔥 NEW
+      "parallel_with", // 🔥 NEW
     ];
 
     const updates = {};
@@ -207,6 +253,21 @@ export const updateCourseAssignment = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "shared_lab_with can only be set on lab components",
+      });
+    }
+
+    // 🔥 NEW — same backlog-only guard as create, using the effective type
+    // (either the incoming update or, if not changing, the existing value)
+    const effectiveType = updates.assignment_type ?? existing.assignment_type;
+    if (
+      effectiveType !== "backlog" &&
+      ((updates.drop_course_id !== undefined && updates.drop_course_id) ||
+        updates.parallel_with?.length)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "drop_course_id and parallel_with can only be set on backlog assignments",
       });
     }
 
@@ -262,6 +323,30 @@ export const updateCourseAssignment = async (req, res) => {
       }
     }
 
+    // 🔥 NEW — reconcile symmetric parallel_with links, identical shape to
+    // the synced_with block above. drop_course_id needs no reconciliation,
+    // it's one-directional.
+    if (updates.parallel_with !== undefined) {
+      const before = existing.parallel_with.map((x) => String(x));
+      const after = updates.parallel_with.map((x) => String(x));
+
+      const removed = before.filter((x) => !after.includes(x));
+      const added = after.filter((x) => !before.includes(x));
+
+      if (removed.length) {
+        await CourseAssignment.updateMany(
+          { _id: { $in: removed } },
+          { $pull: { parallel_with: id } },
+        );
+      }
+      if (added.length) {
+        await CourseAssignment.updateMany(
+          { _id: { $in: added } },
+          { $addToSet: { parallel_with: id } },
+        );
+      }
+    }
+
     res.status(200).json({
       success: true,
       message: "Course assignment updated successfully",
@@ -310,6 +395,18 @@ export const deleteCourseAssignment = async (req, res) => {
       { $pull: { shared_lab_with: id } },
     );
 
+    // 🔥 NEW — clean up parallel_with (symmetric, same as above) and
+    // drop_course_id (one-directional — just null it out on anything that
+    // pointed at the now-deleted assignment)
+    await CourseAssignment.updateMany(
+      { parallel_with: id },
+      { $pull: { parallel_with: id } },
+    );
+    await CourseAssignment.updateMany(
+      { drop_course_id: id },
+      { $set: { drop_course_id: null } },
+    );
+
     res.status(200).json({
       success: true,
       message: "Course assignment deleted successfully",
@@ -337,14 +434,14 @@ export const bulkUpsertCourseAssignments = async (req, res) => {
         .json({ success: false, message: "Assignments array is required" });
     }
 
-    // 🔥 snapshot existing synced_with / shared_lab_with for anything being
-    // updated, so we can diff before/after and keep symmetric back-links in
-    // sync for both fields
+    // 🔥 snapshot existing synced_with / shared_lab_with / parallel_with for
+    // anything being updated, so we can diff before/after and keep symmetric
+    // back-links in sync for all three fields
     const existingIds = assignments.filter((a) => a._id).map((a) => a._id);
     const existingDocs = existingIds.length
       ? await CourseAssignment.find(
           { _id: { $in: existingIds } },
-          "synced_with shared_lab_with",
+          "synced_with shared_lab_with parallel_with", // 🔥 NEW field added
         )
       : [];
     const beforeSyncMap = new Map(
@@ -352,6 +449,10 @@ export const bulkUpsertCourseAssignments = async (req, res) => {
     );
     const beforeLabMap = new Map(
       existingDocs.map((d) => [String(d._id), d.shared_lab_with.map(String)]),
+    );
+    // 🔥 NEW
+    const beforeParallelMap = new Map(
+      existingDocs.map((d) => [String(d._id), d.parallel_with.map(String)]),
     );
 
     const operations = assignments.map((item) => {
@@ -368,6 +469,8 @@ export const bulkUpsertCourseAssignments = async (req, res) => {
         elective_slot_id,
         shared_lab_with,
         synced_with,
+        drop_course_id, // 🔥 NEW
+        parallel_with, // 🔥 NEW
       } = item;
 
       if (
@@ -403,6 +506,8 @@ export const bulkUpsertCourseAssignments = async (req, res) => {
               elective_slot_id: elective_slot_id ?? null,
               shared_lab_with: shared_lab_with || [],
               synced_with: synced_with || [],
+              drop_course_id: drop_course_id || null, // 🔥 NEW
+              parallel_with: parallel_with || [], // 🔥 NEW
             },
           },
           upsert: true,
@@ -463,6 +568,33 @@ export const bulkUpsertCourseAssignments = async (req, res) => {
         await CourseAssignment.updateMany(
           { _id: { $in: added } },
           { $addToSet: { shared_lab_with: item._id } },
+        );
+      }
+    }
+
+    // 🔥 NEW — reconcile symmetric parallel_with back-links, same pattern as
+    // synced_with/shared_lab_with above. drop_course_id needs no
+    // reconciliation loop since it's one-directional and already written
+    // straight into $set above.
+    for (const item of assignments) {
+      if (!item._id || item.parallel_with === undefined) continue;
+
+      const before = beforeParallelMap.get(String(item._id)) || [];
+      const after = (item.parallel_with || []).map(String);
+
+      const removed = before.filter((x) => !after.includes(x));
+      const added = after.filter((x) => !before.includes(x));
+
+      if (removed.length) {
+        await CourseAssignment.updateMany(
+          { _id: { $in: removed } },
+          { $pull: { parallel_with: item._id } },
+        );
+      }
+      if (added.length) {
+        await CourseAssignment.updateMany(
+          { _id: { $in: added } },
+          { $addToSet: { parallel_with: item._id } },
         );
       }
     }

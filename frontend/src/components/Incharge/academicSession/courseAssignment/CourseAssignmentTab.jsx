@@ -126,6 +126,9 @@ const CourseAssignmentTab = ({ session, onSave, onAssignmentsChange }) => {
                 onSyncedWithChange={(rowId, nextSyncedIds) =>
                   data.updateSyncedWith(batch._id, rowId, nextSyncedIds)
                 }
+                onParallelWithChange={(rowId, nextParallelIds) =>
+                  data.updateParallelWith(batch._id, rowId, nextParallelIds)
+                } // 🔥 NEW
                 onDeleteRow={(rowId) => data.deleteRow(batch._id, rowId)}
                 deletingRowId={data.deletingRowId}
                 onAddRow={() => data.addRow(batch._id)}

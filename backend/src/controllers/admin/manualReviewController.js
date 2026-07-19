@@ -318,6 +318,10 @@ export const getItemAvailability = async (req, res) => {
       batchIds,
       facultyId: assignment.faculty_id?._id,
       currentAssignmentId: assignment._id,
+      // 🔥 NEW (case 3) — only meaningful for backlog assignments; undefined
+      // for everything else, which computePlacementAvailability treats as
+      // "no exemption", same as before this change.
+      dropCourseAssignmentId: assignment.drop_course_id ?? undefined,
     });
 
     return res.status(200).json({

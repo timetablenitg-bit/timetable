@@ -22,8 +22,9 @@ const BatchAssignmentCard = ({
   onUpdateRow, // (rowId, patch) => void
   onComponentTypeChange, // (rowId, component_type) => void
   onSyncedWithChange, // (rowId, nextSyncedWithIds) => void
+  onParallelWithChange, // (rowId, nextParallelIds) => void  🔥 NEW
   onDeleteRow, // (rowId) => void
-  deletingRowId, // 🔥 NEW — rowId currently being deleted server-side, or null
+  deletingRowId, // rowId currently being deleted server-side, or null
   onAddRow, // () => void
   onSaveBatch, // () => void
   isSaving,
@@ -137,8 +138,11 @@ const BatchAssignmentCard = ({
                     onSyncedWithChange={(next) =>
                       onSyncedWithChange(row.rowId, next)
                     }
+                    onParallelWithChange={(next) =>
+                      onParallelWithChange(row.rowId, next)
+                    } // 🔥 NEW
                     onDeleteRow={() => onDeleteRow(row.rowId)}
-                    isDeleting={deletingRowId === row.rowId} // 🔥 NEW
+                    isDeleting={deletingRowId === row.rowId}
                   />
                 ))}
               </tbody>
@@ -162,8 +166,11 @@ const BatchAssignmentCard = ({
                 onComponentTypeChange={(v) =>
                   onComponentTypeChange(row.rowId, v)
                 }
+                onParallelWithChange={(next) =>
+                  onParallelWithChange(row.rowId, next)
+                } // 🔥 NEW — see caveat below, mobile file wasn't shared with me
                 onDeleteRow={() => onDeleteRow(row.rowId)}
-                isDeleting={deletingRowId === row.rowId} // 🔥 NEW
+                isDeleting={deletingRowId === row.rowId}
               />
             ))}
           </div>
