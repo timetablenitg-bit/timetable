@@ -110,6 +110,10 @@ export const API_PATHS = {
     GENERATE: "/api/v1/admin/timetable/engine/generate",
     SCHEDULE: "/api/v1/admin/timetable/engine/schedule",
     SLOTS: "/api/v1/admin/timetable/engine/slots",
+    UNPLACED_ASSIGNMENTS: (session_id) =>
+      `/api/v1/admin/timetable/engine/slots/${session_id}/unplaced`,
+    AVAILABLE_SLOT_LABELS: (session_id) =>
+      `/api/v1/admin/timetable/engine/slots/${session_id}/available-labels`,
 
     // Save — replaces the old REWORK / EVALUATE / SAVE_SCHEDULE /
     // EVALUATE_SCHEDULE split. Every save now re-validates + rescores in one

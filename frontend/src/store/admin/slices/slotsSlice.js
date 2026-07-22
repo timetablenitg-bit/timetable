@@ -7,6 +7,53 @@ export const createSlotsSlice = (set, get) => ({
   isSavingSlots: false,
   slotsError: null,
 
+  unplacedAssignments: [],
+  isFetchingUnplaced: false,
+  unplacedError: null,
+
+  availableSlotLabels: [],
+  isFetchingAvailableLabels: false,
+  availableLabelsError: null,
+
+  fetchUnplacedAssignments: async (session_id) => {
+    set({ isFetchingUnplaced: true, unplacedError: null });
+    try {
+      const response = await axiosInstance.get(
+        API_PATHS.TIMETABLE.UNPLACED_ASSIGNMENTS(session_id),
+      );
+      set({
+        unplacedAssignments: response.data.unplaced ?? [],
+        isFetchingUnplaced: false,
+      });
+      return { ok: true, unplaced: response.data.unplaced ?? [] };
+    } catch (error) {
+      const message =
+        error.response?.data?.message || "Failed to fetch unplaced courses";
+      set({ unplacedError: message, isFetchingUnplaced: false });
+      return { ok: false, message };
+    }
+  },
+
+  fetchAvailableSlotLabels: async (session_id) => {
+    set({ isFetchingAvailableLabels: true, availableLabelsError: null });
+    try {
+      const response = await axiosInstance.get(
+        API_PATHS.TIMETABLE.AVAILABLE_SLOT_LABELS(session_id),
+      );
+      set({
+        availableSlotLabels: response.data.available ?? [],
+        isFetchingAvailableLabels: false,
+      });
+      return { ok: true, available: response.data.available ?? [] };
+    } catch (error) {
+      const message =
+        error.response?.data?.message ||
+        "Failed to fetch available slot labels";
+      set({ availableLabelsError: message, isFetchingAvailableLabels: false });
+      return { ok: false, message };
+    }
+  },
+
   bulkUpdateSlots: async (session_id, slots) => {
     set({ isSavingSlots: true, slotsError: null });
     try {

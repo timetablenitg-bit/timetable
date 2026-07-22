@@ -30,6 +30,8 @@ import {
   patchSlot,
   createSlot,
   deleteSlot,
+  getUnplacedAssignments, // NEW
+  getAvailableSlotLabels, // NEW
 } from "../../controllers/admin/slotEditController.js";
 import { saveBatchWeek } from "../../controllers/admin/batchWeekController.js";
 // import { editBatchCell } from "../../controllers/admin/batchCellEditController.js";
@@ -71,6 +73,9 @@ router.put("/slots/:session_id", bulkUpdateSlots);
 router.patch("/slots/:session_id/:slot_name", patchSlot);
 router.post("/slots/:session_id", createSlot);
 router.delete("/slots/:session_id/:slot_name", deleteSlot);
+// NEW — unplaced-course picker + skeleton-aware "add slot" whitelist
+router.get("/slots/:session_id/unplaced", getUnplacedAssignments);
+router.get("/slots/:session_id/available-labels", getAvailableSlotLabels);
 
 // router.patch("/schedule/:timetable_id/batch-cell", editBatchCell);
 router.patch("/schedule/:timetable_id/batch-week", saveBatchWeek);

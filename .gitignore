@@ -9,3 +9,6 @@ coverage/
 data.txt
 merge_project.py
 src.txt
+
+__pycache__/
+*.py[cod]

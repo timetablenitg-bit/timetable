@@ -18,23 +18,15 @@ import {
   AlertCircle,
   Lock,
   LockOpen,
+  Search,
+  Loader2,
 } from "lucide-react";
-import useAdminStore from "../../../../store/admin/index"; // ← adjust path to your store
+import useAdminStore from "../../../../store/admin/index";
 import { toast } from "react-toastify";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 const SLOT_COLOR_KEYS = Object.keys(SLOT_COLORS);
-
-function nextSlotName(existingNames) {
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  for (const c of alphabet) {
-    if (!existingNames.includes(c)) return c;
-  }
-  let n = 1;
-  while (existingNames.includes(`LAB${n}`)) n++;
-  return `LAB${n}`;
-}
 
 function colorForSlot(name) {
   return (
@@ -47,11 +39,6 @@ function getBatches(entry) {
   return entry?.batch_names ?? entry?.batches ?? [];
 }
 
-// Normalizes a batch reference that may either be a raw ObjectId/string, or a
-// populated Batch document (as returned by SlotLock.find().populate("batch_ids")
-// in slotLockController.js::getLocks). Mirrors the assignment_id?._id ?? assignment_id
-// pattern used elsewhere in this file so lock lookups keep working regardless
-// of whether the backend populates batch_ids or not.
 function batchIdOf(batchRef) {
   return (batchRef?._id ?? batchRef)?.toString();
 }
@@ -88,23 +75,71 @@ function detectConflicts(entries) {
   return { dupFacs, dupBatches };
 }
 
-// ── AddEntryModal ─────────────────────────────────────────────────────────────
+// ── PickCourseModal ───────────────────────────────────────────────────────────
+// NEW — replaces the old free-typing AddEntryModal. Primary flow: pick an
+// unplaced CourseAssignment from a list (auto-fills course/faculty/batch).
+// A "type it manually" fallback tab is kept for edge cases (e.g. a course
+// that genuinely has no assignment record).
 
 const FIELD_LABEL =
   "text-[10px] font-medium text-gray-400 dark:text-gray-500 tracking-wide";
 const FIELD_INPUT =
   "mt-1 w-full text-[13px] px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent text-gray-800 dark:text-gray-100 placeholder:text-gray-300 dark:placeholder:text-gray-600 focus:outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors";
 
-const AddEntryModal = ({ onAdd, onClose }) => {
-  const [courseCode, setCourseCode] = useState("");
-  const [facultyCode, setFacultyCode] = useState("");
-  const [batchNames, setBatchNames] = useState("");
-  const [componentType, setComponentType] = useState("lecture");
+const PickCourseModal = ({
+  slotName,
+  targetBatch, // set when opened from an empty batch cell — pre-filters + labels
+  unplaced,
+  isFetching,
+  onAdd,
+  onClose,
+}) => {
+  const [mode, setMode] = useState("pick"); // "pick" | "manual"
+  const [search, setSearch] = useState("");
   const [error, setError] = useState(null);
 
-  const handleSubmit = () => {
-    if (!courseCode.trim() || !facultyCode.trim()) return;
+  // manual fallback fields
+  const [courseCode, setCourseCode] = useState("");
+  const [facultyCode, setFacultyCode] = useState("");
+  const [batchNames, setBatchNames] = useState(targetBatch ?? "");
+  const [componentType, setComponentType] = useState("lecture");
 
+  const filtered = useMemo(() => {
+    let list = unplaced;
+    if (targetBatch) {
+      list = list.filter((a) => (a.batch_names ?? []).includes(targetBatch));
+    }
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter(
+        (a) =>
+          a.course_code?.toLowerCase().includes(q) ||
+          a.course_name?.toLowerCase().includes(q) ||
+          a.faculty_code?.toLowerCase().includes(q),
+      );
+    }
+    return list;
+  }, [unplaced, targetBatch, search]);
+
+  const handlePick = (assignment) => {
+    const ok = onAdd({
+      assignment_id: assignment.assignment_id,
+      course_code: assignment.course_code,
+      faculty_code: assignment.faculty_code,
+      faculty_id: assignment.faculty_id,
+      batch_names: assignment.batch_names,
+      batch_ids: assignment.batch_ids,
+      component_type: assignment.component_type,
+    });
+    if (ok === false) {
+      setError("That batch already has a class in this slot.");
+      return;
+    }
+    onClose();
+  };
+
+  const handleManualSubmit = () => {
+    if (!courseCode.trim() || !facultyCode.trim()) return;
     const ok = onAdd({
       course_code: courseCode.trim().toUpperCase(),
       faculty_code: facultyCode.trim().toUpperCase(),
@@ -115,7 +150,6 @@ const AddEntryModal = ({ onAdd, onClose }) => {
       batch_ids: [],
       component_type: componentType,
     });
-
     if (ok === false) {
       setError("That batch already has a class in this slot.");
       return;
@@ -129,12 +163,13 @@ const AddEntryModal = ({ onAdd, onClose }) => {
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 w-80 p-6"
+        className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 w-96 max-h-[80vh] flex flex-col p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center justify-between mb-4">
           <h3 className="text-[13px] font-medium text-gray-800 dark:text-gray-100">
-            Add course
+            Add course to {slotName}
+            {targetBatch ? ` · ${targetBatch}` : ""}
           </h3>
           <button
             onClick={onClose}
@@ -144,84 +179,165 @@ const AddEntryModal = ({ onAdd, onClose }) => {
           </button>
         </div>
 
-        <div className="space-y-4">
-          <label className="block">
-            <span className={FIELD_LABEL}>Course code</span>
-            <input
-              type="text"
-              value={courseCode}
-              onChange={(e) => setCourseCode(e.target.value)}
-              placeholder="CS301"
-              className={FIELD_INPUT}
-            />
-          </label>
-
-          <label className="block">
-            <span className={FIELD_LABEL}>Faculty code</span>
-            <input
-              type="text"
-              value={facultyCode}
-              onChange={(e) => setFacultyCode(e.target.value)}
-              placeholder="JDO"
-              className={FIELD_INPUT}
-            />
-          </label>
-
-          <label className="block">
-            <span className={FIELD_LABEL}>Batches</span>
-            <input
-              type="text"
-              value={batchNames}
-              onChange={(e) => setBatchNames(e.target.value)}
-              placeholder="CS-A, CS-B"
-              className={FIELD_INPUT}
-            />
-          </label>
-
-          <label className="block">
-            <span className={FIELD_LABEL}>Component</span>
-            <div className="relative mt-1">
-              <select
-                value={componentType}
-                onChange={(e) => setComponentType(e.target.value)}
-                className={`${FIELD_INPUT} appearance-none pr-7 cursor-pointer`}
-              >
-                {["lecture", "lab", "tutorial", "minor", "oe"].map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                size={11}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none"
-              />
-            </div>
-          </label>
+        <div className="flex gap-1 mb-3 text-[11px]">
+          <button
+            onClick={() => setMode("pick")}
+            className={`px-2.5 py-1 rounded-lg transition-colors ${
+              mode === "pick"
+                ? "bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900"
+                : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            }`}
+          >
+            Unplaced courses
+          </button>
+          <button
+            onClick={() => setMode("manual")}
+            className={`px-2.5 py-1 rounded-lg transition-colors ${
+              mode === "manual"
+                ? "bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900"
+                : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            }`}
+          >
+            Enter manually
+          </button>
         </div>
 
+        {mode === "pick" ? (
+          <>
+            <div className="relative mb-3">
+              <Search
+                size={12}
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-300"
+              />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search course or faculty…"
+                className={`${FIELD_INPUT} pl-7`}
+              />
+            </div>
+
+            <div className="flex-1 overflow-y-auto -mx-1 px-1 space-y-1.5 min-h-[120px]">
+              {isFetching ? (
+                <div className="flex items-center justify-center gap-2 py-8 text-gray-400 text-[12px]">
+                  <Loader2 size={14} className="animate-spin" />
+                  Loading unplaced courses…
+                </div>
+              ) : filtered.length === 0 ? (
+                <p className="text-[12px] text-gray-400 text-center py-8">
+                  {targetBatch
+                    ? `No unplaced course for ${targetBatch}.`
+                    : "Nothing unplaced right now."}
+                  <br />
+                  Try "Enter manually" instead.
+                </p>
+              ) : (
+                filtered.map((a) => (
+                  <button
+                    key={a.assignment_id}
+                    onClick={() => handlePick(a)}
+                    className="w-full text-left px-3 py-2 rounded-lg border border-gray-100 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[12px] font-semibold text-gray-800 dark:text-gray-100">
+                        {a.course_code}
+                      </span>
+                      <span className="text-[9px] uppercase tracking-wide text-gray-400">
+                        {a.component_type}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-gray-400 truncate">
+                      {a.course_name}
+                    </p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      {a.faculty_code} · {(a.batch_names ?? []).join(", ")}
+                    </p>
+                  </button>
+                ))
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="space-y-4">
+            <label className="block">
+              <span className={FIELD_LABEL}>Course code</span>
+              <input
+                type="text"
+                value={courseCode}
+                onChange={(e) => setCourseCode(e.target.value)}
+                placeholder="CS301"
+                className={FIELD_INPUT}
+              />
+            </label>
+
+            <label className="block">
+              <span className={FIELD_LABEL}>Faculty code</span>
+              <input
+                type="text"
+                value={facultyCode}
+                onChange={(e) => setFacultyCode(e.target.value)}
+                placeholder="JDO"
+                className={FIELD_INPUT}
+              />
+            </label>
+
+            <label className="block">
+              <span className={FIELD_LABEL}>Batches</span>
+              <input
+                type="text"
+                value={batchNames}
+                onChange={(e) => setBatchNames(e.target.value)}
+                placeholder="CS-A, CS-B"
+                className={FIELD_INPUT}
+              />
+            </label>
+
+            <label className="block">
+              <span className={FIELD_LABEL}>Component</span>
+              <div className="relative mt-1">
+                <select
+                  value={componentType}
+                  onChange={(e) => setComponentType(e.target.value)}
+                  className={`${FIELD_INPUT} appearance-none pr-7 cursor-pointer`}
+                >
+                  {["lecture", "lab", "tutorial", "minor", "oe"].map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown
+                  size={11}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none"
+                />
+              </div>
+            </label>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={onClose}
+                className="flex-1 text-[12px] px-3 py-2 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleManualSubmit}
+                disabled={!courseCode.trim() || !facultyCode.trim()}
+                className="flex-1 text-[12px] px-3 py-2 rounded-lg bg-gray-900 dark:bg-gray-100 hover:bg-gray-700 dark:hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed text-white dark:text-gray-900 font-medium transition-colors"
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        )}
+
         {error && (
-          <p className="flex items-center gap-1 text-[11px] text-red-500 mt-4">
+          <p className="flex items-center gap-1 text-[11px] text-red-500 mt-3">
             <AlertCircle size={11} />
             {error}
           </p>
         )}
-
-        <div className="flex gap-2 mt-6">
-          <button
-            onClick={onClose}
-            className="flex-1 text-[12px] px-3 py-2 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={!courseCode.trim() || !facultyCode.trim()}
-            className="flex-1 text-[12px] px-3 py-2 rounded-lg bg-gray-900 dark:bg-gray-100 hover:bg-gray-700 dark:hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed text-white dark:text-gray-900 font-medium transition-colors"
-          >
-            Add
-          </button>
-        </div>
       </div>
     </div>
   );
@@ -239,42 +355,48 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
     lockCourseToSlot,
     lockSlotEmpty,
     deleteLock,
-    batchesMap = new Map(), // default empty map
+    batchesMap = new Map(),
   },
   ref,
 ) {
   // ── store ────────────────────────────────────────────────────────────────
   const bulkUpdateSlots = useAdminStore((s) => s.bulkUpdateSlots);
-  const createSlot = useAdminStore((s) => s.createSlot);
-  const deleteSlot = useAdminStore((s) => s.deleteSlot);
   const isSavingSlots = useAdminStore((s) => s.isSavingSlots);
   const slotsError = useAdminStore((s) => s.slotsError);
 
+  // NEW — unplaced courses + skeleton-available labels
+  const unplacedAssignments = useAdminStore((s) => s.unplacedAssignments);
+  const isFetchingUnplaced = useAdminStore((s) => s.isFetchingUnplaced);
+  const fetchUnplacedAssignments = useAdminStore(
+    (s) => s.fetchUnplacedAssignments,
+  );
+  const availableSlotLabels = useAdminStore((s) => s.availableSlotLabels);
+  const fetchAvailableSlotLabels = useAdminStore(
+    (s) => s.fetchAvailableSlotLabels,
+  );
+
   const { slots: rawSlots } = slotsData;
 
-  // Local optimistic copy — only lecture slots shown in this table.
   const [slots, setSlots] = useState(() =>
     rawSlots
       .filter((s) => !s.slot_name.startsWith("LAB"))
       .map((s) => ({ ...s, entries: [...(s.entries ?? [])] })),
   );
 
-  // Track which slot names have been added or deleted locally.
   const [addedSlots, setAddedSlots] = useState(new Set());
   const [deletedSlots, setDeletedSlots] = useState(new Set());
 
   const [dragSource, setDragSource] = useState(null);
   const [dragOver, setDragOver] = useState(null);
+  // NEW — modal now carries { slotName, targetBatch }
   const [addModal, setAddModal] = useState(null);
   const [warnings, setWarnings] = useState([]);
   const [actionError, setActionError] = useState(null);
-
-  // NEW: lock mode state
   const [lockMode, setLockMode] = useState(false);
+  const [slotPickerOpen, setSlotPickerOpen] = useState(false); // NEW
 
   const isEditing = editMode;
 
-  // Re-sync when slotsData changes externally.
   useEffect(() => {
     setSlots(
       rawSlots
@@ -285,13 +407,24 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
     setDeletedSlots(new Set());
     setWarnings([]);
     setActionError(null);
-    // Reset lock mode when data changes? Optional, but we keep it.
   }, [rawSlots]);
 
-  // Use the provided map as the primary source, fallback to entries
+  // NEW — pull unplaced courses + available skeleton labels once edit mode
+  // is entered, so the "Add slot" and "+" affordances have fresh data.
+  useEffect(() => {
+    if (isEditing && sessionId) {
+      fetchUnplacedAssignments(sessionId);
+      fetchAvailableSlotLabels(sessionId);
+    }
+  }, [
+    isEditing,
+    sessionId,
+    fetchUnplacedAssignments,
+    fetchAvailableSlotLabels,
+  ]);
+
   const batchNameToId = useMemo(() => {
-    const map = new Map(batchesMap); // start with all batches from session
-    // also add any from entries (in case there are extra)
+    const map = new Map(batchesMap);
     for (const sl of slots) {
       for (const entry of sl.entries) {
         const batchNames = entry.batch_names ?? entry.batches ?? [];
@@ -306,10 +439,9 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
     return map;
   }, [slots, batchesMap]);
 
-  // Build lock maps from locksData
   const { courseLockMap, emptyLockMap } = useMemo(() => {
-    const courseMap = new Map(); // assignmentId -> { slotName, lockId }
-    const emptyMap = new Map(); // slotName -> Map(batchId -> lockId)
+    const courseMap = new Map();
+    const emptyMap = new Map();
 
     for (const lock of locksData) {
       if (lock.lock_type === "course") {
@@ -325,12 +457,6 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
         if (!emptyMap.has(slotName)) emptyMap.set(slotName, new Map());
         const batchMap = emptyMap.get(slotName);
         for (const batchRef of lock.batch_ids ?? []) {
-          // NOTE: getLocks() in slotLockController.js populates batch_ids, so
-          // each entry here may be a full Batch document rather than a raw
-          // ObjectId. Normalize through batchIdOf() (same pattern as
-          // assignment_id?._id ?? assignment_id above) so the map key always
-          // matches the plain-string batch ids used elsewhere (e.g.
-          // batchNameToId / batchId.toString() in toggleEmptyLock).
           const idStr = batchIdOf(batchRef);
           if (idStr) batchMap.set(idStr, lock._id);
         }
@@ -339,12 +465,10 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
     return { courseLockMap: courseMap, emptyLockMap: emptyMap };
   }, [locksData]);
 
-  // Toggle course lock
   const toggleCourseLock = async (assignmentId, slotName) => {
     const idStr = assignmentId.toString();
     const existing = courseLockMap.get(idStr);
     if (existing && existing.slotName === slotName) {
-      // Unlock
       const result = await deleteLock(existing.lockId);
       if (result.ok) {
         toast.success("Lock removed");
@@ -353,7 +477,6 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
         toast.error(result.message || "Failed to remove lock");
       }
     } else {
-      // Lock (or relock to this slot)
       const result = await lockCourseToSlot(sessionId, idStr, slotName);
       if (result.ok) {
         toast.success(`Locked assignment to slot ${slotName}`);
@@ -364,13 +487,11 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
     }
   };
 
-  // Toggle empty lock
   const toggleEmptyLock = async (batchId, slotName) => {
     const batchIdStr = batchId.toString();
     const batchMap = emptyLockMap.get(slotName);
     const existingLockId = batchMap?.get(batchIdStr);
     if (existingLockId) {
-      // Unlock empty
       const result = await deleteLock(existingLockId);
       if (result.ok) {
         toast.success("Empty slot lock removed");
@@ -379,7 +500,6 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
         toast.error(result.message || "Failed to remove empty lock");
       }
     } else {
-      // Lock empty
       const result = await lockSlotEmpty(sessionId, slotName, [batchIdStr]);
       if (result.ok) {
         toast.success(`Slot ${slotName} locked empty for this batch`);
@@ -434,7 +554,6 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
     const movingEntry = srcSlotObj.entries[entryIdx];
     if (!movingEntry) return;
 
-    // Check if the moving entry is locked – if so, prevent drag.
     const assignmentId =
       movingEntry.assignment_id?._id ?? movingEntry.assignment_id;
     if (assignmentId) {
@@ -546,9 +665,28 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
   };
 
   // ── slot management ───────────────────────────────────────────────────────
+  // NEW — "Add slot" no longer auto-picks the next free letter. It only
+  // offers labels the active skeleton actually has cells for AND that aren't
+  // already a generated slot — i.e. exactly the "engine skipped G/H because
+  // no minor/OE assignments existed" case from the request.
+  //
+  // Add/delete here only touch LOCAL state (`slots`, `addedSlots`,
+  // `deletedSlots`). Nothing is persisted until Save is pressed — see
+  // handleSave below, which now sends the whole `slots` array through
+  // bulkUpdateSlots in a single call instead of racing per-slot
+  // create/delete calls against a full-replace bulk update.
 
-  const handleAddSlot = () => {
-    const name = nextSlotName(slots.map((s) => s.slot_name));
+  const usedSlotNames = useMemo(
+    () => new Set(slots.map((s) => s.slot_name)),
+    [slots],
+  );
+
+  const addableLabels = useMemo(
+    () => availableSlotLabels.filter((l) => !usedSlotNames.has(l)),
+    [availableSlotLabels, usedSlotNames],
+  );
+
+  const handleAddSlotLabel = (name) => {
     setSlots((prev) => [
       ...prev,
       { slot_name: name, slot_type: "lecture", entries: [] },
@@ -559,6 +697,7 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
       next.delete(name);
       return next;
     });
+    setSlotPickerOpen(false);
   };
 
   const handleDeleteSlot = (slotName) => {
@@ -589,42 +728,37 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
     setDragSource(null);
     setDragOver(null);
     setAddModal(null);
+    setSlotPickerOpen(false);
   }, [rawSlots]);
 
   // ── save ──────────────────────────────────────────────────────────────────
+  //
+  // FIXED: previously this ran deleteSlot() for each removed slot, then
+  // createSlot() for each added slot, then ALSO called bulkUpdateSlots()
+  // with `survivingSlots` (deliberately excluding the just-created ones).
+  // bulkUpdateSlots is a full delete-then-reinsert on the backend
+  // (GeneratedSlot.deleteMany + insertMany of exactly what's sent), so
+  // that last call wiped out every slot just created in the loop above —
+  // "Add slot" would create the row and then immediately delete it again
+  // in the same save. Deleting happened to look like it worked because the
+  // full-replace step reinserted the pre-save set anyway, but it was
+  // relying on two different persistence strategies agreeing by luck.
+  //
+  // Fix: `slots` local state already reflects every add/delete/entry edit.
+  // Send it whole, once, through bulkUpdateSlots — which already computes
+  // per-slot conflict warnings server-side — and drop the redundant
+  // per-slot create/delete calls entirely.
 
   const handleSave = async () => {
     setWarnings([]);
-    const allWarnings = [];
 
-    for (const slotName of deletedSlots) {
-      const result = await deleteSlot(sessionId, slotName);
-      if (!result.ok) return { ok: false };
-    }
-
-    for (const slotName of addedSlots) {
-      const sl = slots.find((s) => s.slot_name === slotName);
-      if (!sl) continue;
-      const result = await createSlot(sessionId, {
-        slot_name: sl.slot_name,
-        slot_type: sl.slot_type ?? "lecture",
-        entries: sl.entries,
-      });
-      if (!result.ok) return { ok: false };
-      if (result.warnings?.length) allWarnings.push(...result.warnings);
-    }
-
-    const survivingSlots = slots.filter((s) => !addedSlots.has(s.slot_name));
-    if (survivingSlots.length) {
-      const result = await bulkUpdateSlots(sessionId, survivingSlots);
-      if (!result.ok) return { ok: false };
-      if (result.warnings?.length) allWarnings.push(...result.warnings);
-    }
+    const result = await bulkUpdateSlots(sessionId, slots);
+    if (!result.ok) return { ok: false };
 
     setAddedSlots(new Set());
     setDeletedSlots(new Set());
-    if (allWarnings.length) setWarnings(allWarnings);
-    return { ok: true, warnings: allWarnings };
+    if (result.warnings?.length) setWarnings(result.warnings);
+    return { ok: true, warnings: result.warnings ?? [] };
   };
 
   useImperativeHandle(
@@ -652,7 +786,6 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
 
   // ── render ────────────────────────────────────────────────────────────────
 
-  // Helper to render a single entry cell (used in batch rows)
   const renderEntryCell = (sl, entry, entryIdx, batch) => {
     const isLockedCourse = entry?.assignment_id
       ? courseLockMap.get(entry.assignment_id.toString())?.slotName ===
@@ -740,6 +873,59 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
     );
   };
 
+  // NEW — empty cell now shows a "+" on hover in edit mode so the admin can
+  // add an unplaced course straight into that batch/slot cell.
+  const renderEmptyCell = (sl, batch, batchId) => {
+    const isLockedEmpty = batchId
+      ? emptyLockMap.get(sl.slot_name)?.has(batchId.toString())
+      : false;
+    const isOver = dragOver?.slotName === sl.slot_name && isEditing;
+
+    const handleEmptyClick = () => {
+      if (!lockMode) return;
+      if (batchId) {
+        toggleEmptyLock(batchId, sl.slot_name);
+      } else {
+        toast.info("Cannot lock empty: missing batch ID");
+      }
+    };
+
+    return (
+      <td
+        key={sl.slot_name}
+        className={`group relative px-3 py-2.5 text-center border border-gray-200 dark:border-gray-800/60 transition-colors ${
+          isOver ? "bg-gray-50 dark:bg-gray-800/30" : ""
+        } ${lockMode ? "cursor-pointer" : ""}`}
+        onDragOver={
+          isEditing ? (e) => handleDragOver(e, sl.slot_name) : undefined
+        }
+        onDrop={isEditing ? (e) => handleDrop(e, sl.slot_name) : undefined}
+        onClick={handleEmptyClick}
+      >
+        <span className="text-[11px] text-gray-200 dark:text-gray-700 flex items-center justify-center gap-1">
+          {isLockedEmpty ? (
+            <Lock size={12} className="text-indigo-400 dark:text-indigo-300" />
+          ) : (
+            "–"
+          )}
+        </span>
+
+        {isEditing && !lockMode && !isLockedEmpty && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setAddModal({ slotName: sl.slot_name, targetBatch: batch });
+            }}
+            className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-gray-50/90 dark:bg-gray-800/70 transition-opacity"
+            title={`Add a course for ${batch} in ${sl.slot_name}`}
+          >
+            <Plus size={13} className="text-gray-500 dark:text-gray-300" />
+          </button>
+        )}
+      </td>
+    );
+  };
+
   return (
     <div className="space-y-4">
       {/* Toolbar */}
@@ -748,7 +934,7 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
           {isEditing
             ? lockMode
               ? "Click a cell to toggle lock"
-              : "Drag to move · + to add · × to remove"
+              : "Drag to move · hover + to add · × to remove"
             : lockMode
               ? "Click a cell to toggle lock"
               : "View mode"}
@@ -772,7 +958,6 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
             </span>
           ))}
 
-          {/* Lock mode toggle */}
           <button
             onClick={() => setLockMode((prev) => !prev)}
             className={`flex items-center gap-1 text-[12px] px-2.5 py-1.5 rounded-lg transition-colors ${
@@ -783,18 +968,39 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
             title={lockMode ? "Disable lock mode" : "Enable lock mode"}
           >
             {lockMode ? <Lock size={12} /> : <LockOpen size={12} />}
-            {lockMode ? "Lock mode" : "Lock mode"}
+            Lock mode
           </button>
 
           {isEditing && (
-            <button
-              onClick={handleAddSlot}
-              disabled={isSavingSlots}
-              className="flex items-center gap-1 text-[12px] px-2.5 py-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 disabled:opacity-40 transition-colors"
-            >
-              <Plus size={12} />
-              Add slot
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setSlotPickerOpen((v) => !v)}
+                disabled={isSavingSlots || addableLabels.length === 0}
+                title={
+                  addableLabels.length === 0
+                    ? "No unused skeleton slots — the active skeleton has no free labels (e.g. G/H) left to add"
+                    : undefined
+                }
+                className="flex items-center gap-1 text-[12px] px-2.5 py-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <Plus size={12} />
+                Add slot
+              </button>
+
+              {slotPickerOpen && addableLabels.length > 0 && (
+                <div className="absolute right-0 mt-1 z-20 bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-lg shadow-lg py-1 min-w-[100px]">
+                  {addableLabels.map((label) => (
+                    <button
+                      key={label}
+                      onClick={() => handleAddSlotLabel(label)}
+                      className="w-full text-left px-3 py-1.5 text-[12px] text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -846,7 +1052,12 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
                     </span>
                     {isEditing && (
                       <button
-                        onClick={() => setAddModal(sl.slot_name)}
+                        onClick={() =>
+                          setAddModal({
+                            slotName: sl.slot_name,
+                            targetBatch: null,
+                          })
+                        }
                         className="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-gray-700 dark:text-gray-500 dark:hover:bg-gray-600 transition-colors"
                         title="Add course to this slot"
                       >
@@ -896,54 +1107,7 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
                     );
 
                     if (!entry) {
-                      // Empty cell – handle empty lock
-                      const isLockedEmpty = batchId
-                        ? emptyLockMap
-                            .get(sl.slot_name)
-                            ?.has(batchId.toString())
-                        : false;
-                      const isOver =
-                        dragOver?.slotName === sl.slot_name && isEditing;
-
-                      const handleEmptyClick = () => {
-                        if (!lockMode) return;
-                        if (batchId) {
-                          toggleEmptyLock(batchId, sl.slot_name);
-                        } else {
-                          toast.info("Cannot lock empty: missing batch ID");
-                        }
-                      };
-
-                      return (
-                        <td
-                          key={sl.slot_name}
-                          className={`px-3 py-2.5 text-center border border-gray-200 dark:border-gray-800/60 transition-colors ${
-                            isOver ? "bg-gray-50 dark:bg-gray-800/30" : ""
-                          } ${lockMode ? "cursor-pointer" : ""}`}
-                          onDragOver={
-                            isEditing
-                              ? (e) => handleDragOver(e, sl.slot_name)
-                              : undefined
-                          }
-                          onDrop={
-                            isEditing
-                              ? (e) => handleDrop(e, sl.slot_name)
-                              : undefined
-                          }
-                          onClick={handleEmptyClick}
-                        >
-                          <span className="text-[11px] text-gray-200 dark:text-gray-700 flex items-center justify-center gap-1">
-                            {isLockedEmpty ? (
-                              <Lock
-                                size={12}
-                                className="text-indigo-400 dark:text-indigo-300"
-                              />
-                            ) : (
-                              "–"
-                            )}
-                          </span>
-                        </td>
-                      );
+                      return renderEmptyCell(sl, batch, batchId);
                     }
 
                     return renderEntryCell(sl, entry, entryIdx, batch);
@@ -952,7 +1116,6 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
               );
             })}
 
-            {/* Unassigned entries (no batch) */}
             {slots.some((sl) =>
               sl.entries.some((e) => !getBatches(e).length),
             ) && (
@@ -971,7 +1134,6 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
                         className="border border-gray-200 dark:border-gray-800"
                       />
                     );
-                  // For unassigned, we just render them (no lock support)
                   return unassigned.map((e, i) => {
                     const realIdx = sl.entries.indexOf(e);
                     const isLockedCourse = e?.assignment_id
@@ -1068,8 +1230,12 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
       </div>
 
       {addModal && (
-        <AddEntryModal
-          onAdd={(entry) => handleAddEntry(addModal, entry)}
+        <PickCourseModal
+          slotName={addModal.slotName}
+          targetBatch={addModal.targetBatch}
+          unplaced={unplacedAssignments}
+          isFetching={isFetchingUnplaced}
+          onAdd={(entry) => handleAddEntry(addModal.slotName, entry)}
           onClose={() => setAddModal(null)}
         />
       )}
