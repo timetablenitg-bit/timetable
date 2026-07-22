@@ -47,6 +47,15 @@ function getBatches(entry) {
   return entry?.batch_names ?? entry?.batches ?? [];
 }
 
+// Normalizes a batch reference that may either be a raw ObjectId/string, or a
+// populated Batch document (as returned by SlotLock.find().populate("batch_ids")
+// in slotLockController.js::getLocks). Mirrors the assignment_id?._id ?? assignment_id
+// pattern used elsewhere in this file so lock lookups keep working regardless
+// of whether the backend populates batch_ids or not.
+function batchIdOf(batchRef) {
+  return (batchRef?._id ?? batchRef)?.toString();
+}
+
 // ── sub-components ────────────────────────────────────────────────────────────
 
 const ConflictBadge = ({ message }) => (
@@ -230,6 +239,7 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
     lockCourseToSlot,
     lockSlotEmpty,
     deleteLock,
+    batchesMap = new Map(), // default empty map
   },
   ref,
 ) {
@@ -278,9 +288,10 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
     // Reset lock mode when data changes? Optional, but we keep it.
   }, [rawSlots]);
 
-  // Build batch name -> batch ID map from slots entries
+  // Use the provided map as the primary source, fallback to entries
   const batchNameToId = useMemo(() => {
-    const map = new Map();
+    const map = new Map(batchesMap); // start with all batches from session
+    // also add any from entries (in case there are extra)
     for (const sl of slots) {
       for (const entry of sl.entries) {
         const batchNames = entry.batch_names ?? entry.batches ?? [];
@@ -293,7 +304,7 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
       }
     }
     return map;
-  }, [slots]);
+  }, [slots, batchesMap]);
 
   // Build lock maps from locksData
   const { courseLockMap, emptyLockMap } = useMemo(() => {
@@ -313,8 +324,15 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
         const slotName = lock.slot_name;
         if (!emptyMap.has(slotName)) emptyMap.set(slotName, new Map());
         const batchMap = emptyMap.get(slotName);
-        for (const batchId of lock.batch_ids ?? []) {
-          batchMap.set(batchId.toString(), lock._id);
+        for (const batchRef of lock.batch_ids ?? []) {
+          // NOTE: getLocks() in slotLockController.js populates batch_ids, so
+          // each entry here may be a full Batch document rather than a raw
+          // ObjectId. Normalize through batchIdOf() (same pattern as
+          // assignment_id?._id ?? assignment_id above) so the map key always
+          // matches the plain-string batch ids used elsewhere (e.g.
+          // batchNameToId / batchId.toString() in toggleEmptyLock).
+          const idStr = batchIdOf(batchRef);
+          if (idStr) batchMap.set(idStr, lock._id);
         }
       }
     }

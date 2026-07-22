@@ -271,6 +271,14 @@ const GeneratedTimetableTab = ({ session }) => {
     }
   };
 
+  // inside GeneratedTimetableTab
+  const batchesMap = useMemo(() => {
+    const map = new Map();
+    // assuming session.batches is an array of { _id, name }
+    (session.batches || []).forEach((b) => map.set(b.name, b._id));
+    return map;
+  }, [session.batches]);
+
   const isLoading = isFetchingSlots || isFetchingSchedule;
   const hasData = generatedSlotsData || activeScheduleData;
   const score = generatedSlotsData?.score ?? activeScheduleData?.score;
@@ -317,6 +325,7 @@ const GeneratedTimetableTab = ({ session }) => {
                 lockCourseToSlot={lockCourseToSlot}
                 lockSlotEmpty={lockSlotEmpty}
                 deleteLock={deleteLock}
+                batchesMap={batchesMap}
               />
             ),
           }
@@ -362,6 +371,7 @@ const GeneratedTimetableTab = ({ session }) => {
     lockCourseToSlot,
     lockSlotEmpty,
     deleteLock,
+    batchesMap,
   ]);
 
   if (isLoading)

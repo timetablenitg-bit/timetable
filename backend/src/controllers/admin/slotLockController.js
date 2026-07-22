@@ -52,7 +52,6 @@ export const getLocks = async (req, res) => {
         .json({ success: false, message: "session_id is required" });
     }
 
-    ```
     const locks = await SlotLock.find({ session_id })
       .populate({
         path: "assignment_id",
@@ -60,9 +59,8 @@ export const getLocks = async (req, res) => {
       })
       .populate("batch_ids")
       .sort({ slot_name: 1 });
-    
+
     return res.status(200).json({ success: true, data: locks });
-    ```;
   } catch (err) {
     console.error("[getLocks]", err);
     return res
@@ -129,6 +127,7 @@ export const lockCourseToSlot = async (req, res) => {
 
 export const lockSlotEmpty = async (req, res) => {
   try {
+    console.log("[lockSlotEmpty] body:", req.body);
     const { session_id, slot_name, batch_ids } = req.body;
     if (
       !session_id ||
