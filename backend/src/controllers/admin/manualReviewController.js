@@ -9,6 +9,13 @@
 // active generation's GeneratedSlot / TimetableSchedule records — this
 // IS how the "corrected timetable" gets saved, there's no separate
 // draft/preview step.
+//
+// CHANGED: every resolve* endpoint now calls reconcileUnplacedItems after
+// saving the schedule. Each of these already sets its OWN item's status
+// directly, so this is mostly a safety net — but it matters for edge cases
+// like resolveChooseOccurrencesItem with sessions_to_choose: 0, which can
+// fully hide an assignment everywhere; without this it would just vanish
+// instead of correctly reopening as an "unplaced" item.
 
 import { ManualReviewItem } from "../../models/manualReviewModel.js";
 import { GeneratedSlot } from "../../models/generatedSlotModel.js";
@@ -16,6 +23,7 @@ import { TimetableSchedule } from "../../models/timetableScheduleModel.js";
 import { CourseAssignment } from "../../models/courseAssignmentModel.js";
 import { computePlacementAvailability } from "../../utils/computePlacementAvailability.js";
 import { computeMinorOeAvailability } from "../../utils/computeMinorOeAvailability.js";
+import { reconcileUnplacedItems } from "../../utils/syncManualReview.js";
 
 // ── GET /api/v1/admin/timetable/manual-review?session_id= ──────────────────
 // Returns pending items for the session's latest generation run.
@@ -106,7 +114,6 @@ async function upsertSlotEntry(
 // doesn't collide with anything the engine already named, and it's
 // traceable back to the review item.
 
-// controllers/manualReviewController.js
 export const resolveOverflowItem = async (req, res) => {
   try {
     const { item_id } = req.params;
@@ -184,6 +191,7 @@ export const resolveOverflowItem = async (req, res) => {
 
     schedule.markModified("grid");
     await schedule.save();
+    await reconcileUnplacedItems(item.session_id, item.generation_id);
 
     item.status = "resolved";
     item.resolution = { placements, chosen_days: [] };
@@ -258,6 +266,7 @@ export const resolveChooseOccurrencesItem = async (req, res) => {
       }
       schedule.markModified("grid");
       await schedule.save();
+      await reconcileUnplacedItems(item.session_id, item.generation_id);
     }
 
     item.status = "resolved";
@@ -276,6 +285,7 @@ export const resolveChooseOccurrencesItem = async (req, res) => {
       .json({ success: false, message: "Internal server error" });
   }
 };
+
 // ── GET /api/v1/admin/timetable/manual-review/:item_id/availability ────────
 // Returns a per-cell free/shared_ok/blocked map for THIS item's assignment,
 // so the frontend can render a clickable timetable instead of raw selects.
@@ -533,6 +543,7 @@ export const resolveUnplacedItem = async (req, res) => {
 
     schedule.markModified("grid");
     await schedule.save();
+    await reconcileUnplacedItems(item.session_id, item.generation_id);
 
     item.status = "resolved";
     item.resolution = { placements: resolvedPlacements, chosen_days: [] };

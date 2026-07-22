@@ -7,6 +7,16 @@
 // flat list of warnings. Purely advisory: nothing here blocks a save,
 // matching the rest of this codebase's "admin can override, but sees
 // what they're overriding" stance.
+//
+// CHANGED — removed the cross-track (track1 vs track2, same day+period)
+// clash check entirely. Track is a per-batch DISPLAY PROJECTION of which
+// arrangement to show that batch under (see resolveBatchTrack.js /
+// timetableScheduleModel.js's track_assignments comments), not two
+// independent real placements — so "batch X is in both Track 1 and
+// Track 2 at period N" was never an actual double-booking, just the
+// same batch's week rendered two ways. Flagging it as an error was a
+// false positive by construction. Only same-track checks (back-to-back,
+// consecutive runs) reflect a real scheduling conflict and are kept.
 
 const CONSECUTIVE_LIMIT = 4; // periods in a row before we flag fatigue
 
@@ -45,63 +55,15 @@ function resolveCellOccupants(cell, slotMap) {
 
 export function computeScheduleWarnings(grid, slotMap) {
   const warnings = [];
-  const byDayPeriod = {};
   const byDayTrack = {};
 
   for (const cell of grid) {
-    const dpKey = `${cell.day}::${cell.period_index}`;
-    (byDayPeriod[dpKey] ??= []).push(cell);
     const dtKey = `${cell.day}::${cell.track}`;
     (byDayTrack[dtKey] ??= []).push(cell);
   }
 
-  // ── 1. simultaneous cross-track clash — same batch/faculty in Track 1
-  // AND Track 2 at the same day+period. Covers labs too, since it just
-  // looks at what's occupying each cell, not the cell's type. ──────────
-  for (const [dpKey, cells] of Object.entries(byDayPeriod)) {
-    if (cells.length < 2) continue;
-    const [day, piStr] = dpKey.split("::");
-    const byTrack = cells.map((c) => ({
-      track: c.track,
-      occupants: resolveCellOccupants(c, slotMap),
-    }));
-
-    for (let i = 0; i < byTrack.length; i++) {
-      for (let j = i + 1; j < byTrack.length; j++) {
-        const a = byTrack[i];
-        const b = byTrack[j];
-        if (a.track === b.track) continue;
-
-        for (const oa of a.occupants) {
-          for (const ob of b.occupants) {
-            const isLab =
-              oa.componentType === "lab" || ob.componentType === "lab";
-
-            if (oa.batchName && oa.batchName === ob.batchName) {
-              warnings.push({
-                type: isLab ? "lab_clash" : "batch_clash",
-                severity: "error",
-                day,
-                period_index: Number(piStr),
-                message: `${oa.batchName} is scheduled in both Track ${a.track} and Track ${b.track} on ${day} (period ${piStr}) — a batch can't be in two places at once.`,
-              });
-            }
-            if (oa.facultyCode && oa.facultyCode === ob.facultyCode) {
-              warnings.push({
-                type: isLab ? "lab_clash" : "faculty_clash",
-                severity: "error",
-                day,
-                period_index: Number(piStr),
-                message: `${oa.facultyCode} is scheduled in both Track ${a.track} and Track ${b.track} on ${day} (period ${piStr}) — a faculty member can't teach two classes at once.`,
-              });
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // ── 2. same-track checks: back-to-back overlap + consecutive runs ────
+  // ── same-track checks: back-to-back overlap + consecutive runs ───────
+  // (Cross-track comparison removed — see file header comment.)
   for (const [dtKey, cells] of Object.entries(byDayTrack)) {
     const [day, trackStr] = dtKey.split("::");
     const track = Number(trackStr);
@@ -129,6 +91,8 @@ export function computeScheduleWarnings(grid, slotMap) {
               day,
               track,
               period_index: curr.period_index,
+              batch_names: [po.batchName, co.batchName].filter(Boolean),
+              faculty_codes: [po.facultyCode],
               message: `${po.facultyCode} has back-to-back classes on ${day} track ${track} (periods ${prev.period_index}–${curr.period_index}) — ${po.courseCode} then ${co.courseCode}.`,
             });
           }
@@ -178,6 +142,8 @@ export function computeScheduleWarnings(grid, slotMap) {
             day,
             track,
             period_index: active[key].start,
+            batch_names: kind === "batch" ? [name] : [],
+            faculty_codes: kind === "faculty" ? [name] : [],
             message: `${name} (${kind}) has ${active[key].count} consecutive periods on ${day} track ${track} (P${active[key].start}–P${active[key].end}) with no break.`,
           });
         }

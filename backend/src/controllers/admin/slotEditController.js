@@ -2,10 +2,7 @@
 //
 // Unchanged in behaviour from the original — still compatible since
 // lab slot names are still "LAB_MONDAY" / "LAB_TUESDAY" / "LAB_THURSDAY"
-// (matches the existing /^LAB/i filter). Kept as-is per the instruction
-// to only change what the plan calls for; the "make these more purpose
-// driven" refinement you mentioned wanting is a separate pass — happy to
-// do it once the core engine changes are confirmed working.
+// (matches the existing /^LAB/i filter).
 //
 // FIXED: bulkUpdateSlots used to reject with 400 when `slots` was an empty
 // array. Now that the frontend sends its whole local `slots` state through
@@ -15,27 +12,30 @@
 // so it should go through deleteMany + insertMany([]) rather than being
 // rejected.
 //
-// NEW: manual placements made here (bulkUpdateSlots / patchSlot / createSlot)
-// now sync with the manual-review queue in both directions that matter:
-//   1. resolvePendingReviewsForPlacedAssignments — if an admin manually
-//      places a course that had a pending "unplaced" review item, that item
-//      is auto-resolved instead of sitting stale in the queue. Scoped to
-//      kind:"unplaced" only — see utils/syncManualReview.js for why
-//      overflow/choose_occurrences items must NOT be touched by this (their
-//      assignments are ALREADY in entries by design, that's the whole
-//      reason those review kinds exist).
-//   2. reconcileOccurrenceReview — if an admin places a course onto a label
-//      whose day-count doesn't match the course's sessions_per_week, a
-//      pending "choose_occurrences" (too many days) or "overflow" (too few
-//      days) review item is created, same as slot_generator.py would have
-//      done at generation time. See utils/reconcileOccurrenceReview.js for
-//      the synced_with LIMITATION noted there — not handled here.
+// CHANGED: all three write paths (bulkUpdateSlots / patchSlot / createSlot)
+// plus deleteSlot now call reconcileUnplacedItems instead of
+// resolvePendingReviewsForPlacedAssignments. The old function only ever
+// resolved items using a caller-supplied "these ids just got placed" list —
+// it could never notice an assignment that just got REMOVED by the same
+// save (e.g. deleting a slot, or saving a smaller entries[] over an
+// existing one). reconcileUnplacedItems recomputes placement from scratch
+// against the actual grid every time, so it catches both directions and
+// stays consistent with batchWeekController's edits too.
+//
+// getUnplacedAssignments now builds its placedIds via the SAME shared
+// computeEffectivelyPlacedIds function the reconciler uses (previously it
+// had its own hand-rolled version that ignored hidden_assignment_ids,
+// which meant a course fully hidden off the grid via batch-week edits
+// could still show as "placed" here and never reappear in the picker).
 
 import { GeneratedSlot } from "../../models/generatedSlotModel.js";
 import { CourseAssignment } from "../../models/courseAssignmentModel.js";
 import { TimetableSkeleton } from "../../models/timetableSkeletonModel.js";
 import { TimetableSchedule } from "../../models/timetableScheduleModel.js";
-import { resolvePendingReviewsForPlacedAssignments } from "../../utils/syncManualReview.js";
+import {
+  reconcileUnplacedItems,
+  computeEffectivelyPlacedIds,
+} from "../../utils/syncManualReview.js";
 import { reconcileOccurrenceReview } from "../../utils/reconcileOccurrenceReview.js";
 
 async function latestGenerationId(session_id) {
@@ -131,15 +131,6 @@ export const bulkUpdateSlots = async (req, res) => {
 
       await GeneratedSlot.insertMany(docs);
 
-      const placedAssignmentIds = docs.flatMap((d) =>
-        (d.entries ?? []).map((e) => e.assignment_id).filter(Boolean),
-      );
-      await resolvePendingReviewsForPlacedAssignments(
-        session_id,
-        generation_id,
-        placedAssignmentIds,
-      );
-
       for (const doc of docs) {
         await reconcileOccurrenceReview({
           session_id,
@@ -149,6 +140,11 @@ export const bulkUpdateSlots = async (req, res) => {
         });
       }
     }
+
+    // Runs regardless of whether slots.length is 0 — deleting everything
+    // must reopen "unplaced" items for whatever just got stranded, exactly
+    // like any other removal.
+    await reconcileUnplacedItems(session_id, generation_id);
 
     const allSlots = await GeneratedSlot.find({ session_id, generation_id })
       .sort({ slot_name: 1 })
@@ -193,20 +189,13 @@ export const patchSlot = async (req, res) => {
       const { ok, conflicts } = checkConflicts(entries);
       slot.entries = entries;
 
-      const placedAssignmentIds = entries
-        .map((e) => e.assignment_id)
-        .filter(Boolean);
-      await resolvePendingReviewsForPlacedAssignments(
-        session_id,
-        generation_id,
-        placedAssignmentIds,
-      );
       await reconcileOccurrenceReview({
         session_id,
         generation_id,
         slot_name: slot.slot_name,
         entries,
       });
+      await reconcileUnplacedItems(session_id, generation_id);
 
       if (!ok) {
         await slot.save();
@@ -281,20 +270,13 @@ export const createSlot = async (req, res) => {
       entries,
     });
 
-    const placedAssignmentIds = entries
-      .map((e) => e.assignment_id)
-      .filter(Boolean);
-    await resolvePendingReviewsForPlacedAssignments(
-      session_id,
-      generation_id,
-      placedAssignmentIds,
-    );
     await reconcileOccurrenceReview({
       session_id,
       generation_id,
       slot_name,
       entries,
     });
+    await reconcileUnplacedItems(session_id, generation_id);
 
     return res.status(201).json({
       message: "Slot created",
@@ -326,6 +308,11 @@ export const deleteSlot = async (req, res) => {
     if (result.deletedCount === 0) {
       return res.status(404).json({ message: `Slot ${slot_name} not found` });
     }
+
+    // NEW: deleting a slot can strand every assignment that was in it —
+    // previously nothing here ever created a review item for that, so those
+    // courses just vanished with no prompt to fix them.
+    await reconcileUnplacedItems(session_id, generation_id);
 
     return res.status(200).json({ message: `Slot ${slot_name} deleted` });
   } catch (err) {
@@ -365,22 +352,11 @@ export const getUnplacedAssignments = async (req, res) => {
       TimetableSchedule.findOne({ session_id, generation_id }).lean(),
     ]);
 
-    const placedIds = new Set();
-    for (const slot of slots) {
-      for (const e of slot.entries ?? []) {
-        if (e.assignment_id) placedIds.add(String(e.assignment_id));
-      }
-    }
-
-    // Manual-review resolutions that live on the schedule grid rather than
-    // in a GeneratedSlot doc — overflow placements and minor/OE overrides —
-    // also count as "placed". Otherwise a course resolved via manual review
-    // would keep showing up in the slot editor's "add unplaced course" picker.
-    for (const cell of schedule?.grid ?? []) {
-      for (const e of cell.manual_entries ?? []) {
-        if (e.assignment_id) placedIds.add(String(e.assignment_id));
-      }
-    }
+    // CHANGED: uses the same shared function reconcileUnplacedItems uses,
+    // so this picker and the pending-review queue can never disagree about
+    // whether a given assignment is placed (previously this had its own
+    // hand-rolled loop that ignored hidden_assignment_ids).
+    const placedIds = computeEffectivelyPlacedIds(slots, schedule);
 
     const unplaced = assignments
       .filter((a) => !placedIds.has(String(a._id)))

@@ -17,6 +17,16 @@
 // still SEES them, they're just not draggable — surfaced to the frontend
 // so it can lock them, and rejected here too if something slips through.
 //
+// CHANGED: saveBatchWeek now calls reconcileUnplacedItems after saving the
+// grid. This was the main gap — dragging a course off its only cell (or
+// clearing it) here previously never told ManualReviewItem anything, so a
+// course could go completely missing from the timetable with no "unplaced"
+// item ever created to prompt the admin to fix it, and conversely a
+// resolved "unplaced" item could keep claiming a course was handled after
+// an admin removed it via this view. This makes the slot editor, the
+// manual-review queue, and this drag-and-drop view agree on the same
+// placement state.
+//
 // Route: PATCH /api/v1/admin/timetable/engine/schedule/:timetable_id/batch-week
 // Body: {
 //   batch_id, batch_name,
@@ -30,6 +40,7 @@
 import { TimetableSchedule } from "../../models/timetableScheduleModel.js";
 import { GeneratedSlot } from "../../models/generatedSlotModel.js";
 import { computeScheduleWarnings } from "../../utils/scheduleWarnings.js";
+import { reconcileUnplacedItems } from "../../utils/syncManualReview.js";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -193,6 +204,12 @@ export const saveBatchWeek = async (req, res) => {
 
     schedule.markModified("grid");
     await schedule.save();
+
+    // NEW: keeps the "unplaced" review queue honest about what this
+    // drag-and-drop edit just did to the grid — reopens items for anything
+    // that just got cleared with nothing to replace it, and resolves items
+    // for anything that just got manually placed back in.
+    await reconcileUnplacedItems(schedule.session_id, schedule.generation_id);
 
     const warnings = computeScheduleWarnings(schedule.grid, slotMap);
     for (const msg of rejected) {

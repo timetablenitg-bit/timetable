@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   DAYS,
   TIME_LABELS,
@@ -24,6 +24,7 @@ import {
   Loader2,
   Save,
   Info,
+  Trash2,
 } from "lucide-react";
 import WarningsPanel from "./WarningsPanel";
 import BatchCellEditorModal from "./BatchCellEditorModal";
@@ -136,6 +137,13 @@ const InstituteView = ({ scheduleData, slotsData }) => {
     isSavingBatchWeek,
     scheduleWarnings,
     batchCellError,
+    // NEW — same data EditableSlotsView already uses; reused here so the
+    // Institute view can show unplaced/needs-extra badges and let the
+    // batch cell editor pick from unplaced courses instead of free-typing
+    // only.
+    unplacedAssignments,
+    isFetchingUnplaced,
+    fetchUnplacedAssignments,
   } = useAdminStore();
 
   // NEW — per-batch drag-and-drop edit mode.
@@ -148,14 +156,37 @@ const InstituteView = ({ scheduleData, slotsData }) => {
   const [dragError, setDragError] = useState(null);
   const [editingSlot, setEditingSlot] = useState(null); // slot object
 
+  // NEW — admin-added lab blocks for the currently-edited batch, keyed by
+  // `${day}::${track}`, each entry a list of period-index arrays (2 or 3
+  // long, i.e. a 2hr or 3hr lab). Purely local until Save — same staging
+  // pattern as pendingChanges. These let a batch get an extra lab beyond
+  // the skeleton's fixed AM/PM block without touching the skeleton, so no
+  // other batch is affected.
+  const [extraLabs, setExtraLabs] = useState(new Map());
+  // NEW — { day, length } while the "pick exact periods" UI is open for a
+  // given day/length; null otherwise.
+  const [labPickMode, setLabPickMode] = useState(null);
+
   const canEditBatch = !!batchFilter && !facultyFilter;
 
   React.useEffect(() => {
     if (!canEditBatch) {
       setBatchEditMode(false);
       setPendingChanges(new Map());
+      setExtraLabs(new Map()); // NEW
+      setLabPickMode(null); // NEW
     }
   }, [canEditBatch]);
+
+  // NEW — unplaced assignments feed the badges (shown even outside edit
+  // mode) as well as the "pick from unplaced" tab in BatchCellEditorModal,
+  // so fetch as soon as we have a session to fetch for.
+  useEffect(() => {
+    const sessionId = scheduleData?.session_id;
+    if (sessionId) {
+      fetchUnplacedAssignments(sessionId);
+    }
+  }, [scheduleData?.session_id, fetchUnplacedAssignments]);
 
   const isFiltered = !!(batchFilter || facultyFilter);
 
@@ -251,6 +282,45 @@ const InstituteView = ({ scheduleData, slotsData }) => {
     const next = current === 2 ? 1 : 2;
 
     await setBatchTrack(timetableId, { day, batch_id: batchId, track: next });
+  };
+
+  // NEW — per-batch count of still-unplaced sessions, split lecture vs lab
+  // vs other, so "needs an extra lecture/lab" can be shown right under the
+  // batch name instead of the admin having to go dig through the Slots tab
+  // or the Manual Review panel.
+  const batchUnplacedSummary = useMemo(() => {
+    const map = {};
+    (unplacedAssignments ?? []).forEach((a) => {
+      (a.batch_names ?? []).forEach((b) => {
+        map[b] = map[b] || { lecture: 0, lab: 0, other: 0 };
+        const key =
+          a.component_type === "lab"
+            ? "lab"
+            : a.component_type === "lecture"
+              ? "lecture"
+              : "other";
+        map[b][key] += 1;
+      });
+    });
+    return map;
+  }, [unplacedAssignments]);
+
+  const UnplacedBadge = ({ batch }) => {
+    const info = batchUnplacedSummary[batch];
+    if (!info || (!info.lecture && !info.lab && !info.other)) return null;
+    const parts = [];
+    if (info.lecture)
+      parts.push(`${info.lecture} lecture${info.lecture > 1 ? "s" : ""}`);
+    if (info.lab) parts.push(`${info.lab} lab${info.lab > 1 ? "s" : ""}`);
+    if (info.other) parts.push(`${info.other} other`);
+    return (
+      <span
+        title={`Still unplaced for ${batch}: ${parts.join(", ")}`}
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 whitespace-nowrap"
+      >
+        ⚠ {parts.join(" · ")}
+      </span>
+    );
   };
 
   // ── shared cell helpers ─────────────────────────────────────────────────────
@@ -456,125 +526,140 @@ const InstituteView = ({ scheduleData, slotsData }) => {
 
   // ── FILTERED VIEW (read-only) — all 5 days stacked ──────────────────────────
   const renderFilteredView = () => (
-    <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
-      <table
-        className="border-collapse"
-        style={{ minWidth: 780, width: "100%" }}
-      >
-        <thead>
-          <tr className="bg-gray-50 dark:bg-gray-800/80">
-            <th
-              className="border border-gray-100 dark:border-gray-700 px-3 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 sticky left-0 bg-gray-50 dark:bg-gray-800/80 z-10"
-              style={{ minWidth: 120 }}
-            >
-              Batch
-            </th>
-            <th
-              className="border border-gray-100 dark:border-gray-700 px-2 py-2.5 text-center text-xs font-semibold text-gray-500 dark:text-gray-400"
-              style={{ minWidth: 44 }}
-            >
-              Day
-            </th>
-            {TIME_LABELS.map((t, i) => (
+    <div className="space-y-3">
+      {/* NEW — collapsible, batch/faculty-scoped warnings even in the
+          read-only filtered view, not just batch edit mode. */}
+      {(batchFilter || facultyFilter) && (
+        <WarningsPanel
+          warnings={scheduleWarnings}
+          batchName={batchFilter || undefined}
+          facultyName={facultyFilter || undefined}
+        />
+      )}
+
+      <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+        <table
+          className="border-collapse"
+          style={{ minWidth: 780, width: "100%" }}
+        >
+          <thead>
+            <tr className="bg-gray-50 dark:bg-gray-800/80">
               <th
-                key={i}
-                className={`border border-gray-100 dark:border-gray-700 px-1 py-2.5 text-center text-[9px] font-semibold whitespace-nowrap ${
-                  i === LUNCH_PI
-                    ? "text-gray-300 dark:text-gray-600"
-                    : "text-gray-400 dark:text-gray-500"
-                }`}
-                style={{ minWidth: i === LUNCH_PI ? 40 : 68 }}
+                className="border border-gray-100 dark:border-gray-700 px-3 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 sticky left-0 bg-gray-50 dark:bg-gray-800/80 z-10"
+                style={{ minWidth: 120 }}
               >
-                {t}
+                Batch
               </th>
-            ))}
-          </tr>
-        </thead>
-
-        <tbody>
-          {filteredBatches.length === 0 ? (
-            <tr>
-              <td
-                colSpan={TIME_LABELS.length + 2}
-                className="py-12 text-center text-sm text-gray-400 dark:text-gray-600"
+              <th
+                className="border border-gray-100 dark:border-gray-700 px-2 py-2.5 text-center text-xs font-semibold text-gray-500 dark:text-gray-400"
+                style={{ minWidth: 44 }}
               >
-                No batches match the selected filters.
-              </td>
+                Day
+              </th>
+              {TIME_LABELS.map((t, i) => (
+                <th
+                  key={i}
+                  className={`border border-gray-100 dark:border-gray-700 px-1 py-2.5 text-center text-[9px] font-semibold whitespace-nowrap ${
+                    i === LUNCH_PI
+                      ? "text-gray-300 dark:text-gray-600"
+                      : "text-gray-400 dark:text-gray-500"
+                  }`}
+                  style={{ minWidth: i === LUNCH_PI ? 40 : 68 }}
+                >
+                  {t}
+                </th>
+              ))}
             </tr>
-          ) : (
-            filteredBatches.map((batch, bi) =>
-              DAYS.map((day, di) => {
-                const { map, isT2, rowHasT2, batchPmLab, batchAmLab } =
-                  getDayTrackInfo(day, batch);
-                const assignedT2 = isBatchOnTrack2(day, batch);
-                const isFirstDay = di === 0;
+          </thead>
 
-                return (
-                  <tr
-                    key={`${batch}-${day}`}
-                    className={[
-                      "transition-colors hover:bg-gray-50/60 dark:hover:bg-gray-800/30",
-                      isT2 ? "bg-purple-50/20 dark:bg-purple-900/5" : "",
-                      bi % 2 && !isT2
-                        ? "bg-gray-50/20 dark:bg-gray-800/10"
-                        : "",
-                    ].join(" ")}
-                    style={
-                      isFirstDay && bi > 0
-                        ? { borderTop: "2px solid #e5e7eb" }
-                        : undefined
-                    }
-                  >
-                    {isFirstDay && (
-                      <td
-                        rowSpan={DAYS.length}
-                        className="border border-gray-100 dark:border-gray-700 px-3 py-2 text-xs font-semibold text-gray-600 dark:text-gray-300 sticky left-0 bg-white dark:bg-gray-800 z-10 align-middle"
-                        style={
-                          bi > 0
-                            ? { borderTop: "2px solid #e5e7eb" }
-                            : undefined
-                        }
-                      >
-                        <div className="flex items-center gap-1.5">{batch}</div>
-                      </td>
-                    )}
+          <tbody>
+            {filteredBatches.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={TIME_LABELS.length + 2}
+                  className="py-12 text-center text-sm text-gray-400 dark:text-gray-600"
+                >
+                  No batches match the selected filters.
+                </td>
+              </tr>
+            ) : (
+              filteredBatches.map((batch, bi) =>
+                DAYS.map((day, di) => {
+                  const { map, isT2, rowHasT2, batchPmLab, batchAmLab } =
+                    getDayTrackInfo(day, batch);
+                  const assignedT2 = isBatchOnTrack2(day, batch);
+                  const isFirstDay = di === 0;
 
-                    <td
-                      className={`border border-gray-100 dark:border-gray-700 px-2 py-1.5 text-center text-[10px] font-semibold whitespace-nowrap ${
-                        isT2
-                          ? "text-purple-400 dark:text-purple-500"
-                          : "text-gray-400 dark:text-gray-500"
-                      }`}
+                  return (
+                    <tr
+                      key={`${batch}-${day}`}
+                      className={[
+                        "transition-colors hover:bg-gray-50/60 dark:hover:bg-gray-800/30",
+                        isT2 ? "bg-purple-50/20 dark:bg-purple-900/5" : "",
+                        bi % 2 && !isT2
+                          ? "bg-gray-50/20 dark:bg-gray-800/10"
+                          : "",
+                      ].join(" ")}
+                      style={
+                        isFirstDay && bi > 0
+                          ? { borderTop: "2px solid #e5e7eb" }
+                          : undefined
+                      }
                     >
-                      <span className="inline-flex items-center gap-1">
-                        {day.slice(0, 3)}
-                        {rowHasT2 && (
-                          <TrackToggle
-                            isT2={assignedT2}
-                            isSaving={isSavingTrack}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleToggleTrack(day, batch);
-                            }}
-                          />
-                        )}
-                      </span>
-                    </td>
+                      {isFirstDay && (
+                        <td
+                          rowSpan={DAYS.length}
+                          className="border border-gray-100 dark:border-gray-700 px-3 py-2 text-xs font-semibold text-gray-600 dark:text-gray-300 sticky left-0 bg-white dark:bg-gray-800 z-10 align-middle"
+                          style={
+                            bi > 0
+                              ? { borderTop: "2px solid #e5e7eb" }
+                              : undefined
+                          }
+                        >
+                          <div className="flex flex-col items-start gap-1">
+                            <span>{batch}</span>
+                            <UnplacedBadge batch={batch} /> {/* NEW */}
+                          </div>
+                        </td>
+                      )}
 
-                    {renderPeriodCells(
-                      batch,
-                      isT2,
-                      map,
-                      batchPmLab,
-                      batchAmLab,
-                    )}
-                  </tr>
-                );
-              }),
-            )
-          )}
-        </tbody>
-      </table>
+                      <td
+                        className={`border border-gray-100 dark:border-gray-700 px-2 py-1.5 text-center text-[10px] font-semibold whitespace-nowrap ${
+                          isT2
+                            ? "text-purple-400 dark:text-purple-500"
+                            : "text-gray-400 dark:text-gray-500"
+                        }`}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {day.slice(0, 3)}
+                          {rowHasT2 && (
+                            <TrackToggle
+                              isT2={assignedT2}
+                              isSaving={isSavingTrack}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleTrack(day, batch);
+                              }}
+                            />
+                          )}
+                        </span>
+                      </td>
+
+                      {renderPeriodCells(
+                        batch,
+                        isT2,
+                        map,
+                        batchPmLab,
+                        batchAmLab,
+                      )}
+                    </tr>
+                  );
+                }),
+              )
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 
@@ -685,15 +770,20 @@ const InstituteView = ({ scheduleData, slotsData }) => {
                   ].join(" ")}
                 >
                   <td className="border border-gray-100 dark:border-gray-700 px-3 py-2 text-xs font-semibold text-gray-600 dark:text-gray-300 sticky left-0 bg-white dark:bg-gray-800 z-10">
-                    <div className="flex items-center gap-1.5">
-                      {batch}
-                      {canToggleTrack && (
-                        <TrackToggle
-                          isT2={assignedT2}
-                          isSaving={isSavingTrack}
-                          onClick={() => handleToggleTrack(selectedDay, batch)}
-                        />
-                      )}
+                    <div className="flex flex-col items-start gap-1">
+                      <div className="flex items-center gap-1.5">
+                        {batch}
+                        {canToggleTrack && (
+                          <TrackToggle
+                            isT2={assignedT2}
+                            isSaving={isSavingTrack}
+                            onClick={() =>
+                              handleToggleTrack(selectedDay, batch)
+                            }
+                          />
+                        )}
+                      </div>
+                      <UnplacedBadge batch={batch} /> {/* NEW */}
                     </div>
                   </td>
 
@@ -726,6 +816,7 @@ const InstituteView = ({ scheduleData, slotsData }) => {
       isManual: !!isManual,
       content: entry
         ? {
+            assignment_id: entry.assignment_id ?? null,
             course_code: entry.course_code ?? entry.course ?? "",
             faculty_code: entry.faculty_code ?? entry.faculty ?? "",
             component_type: entry.component_type ?? (isLab ? "lab" : "lecture"),
@@ -736,10 +827,11 @@ const InstituteView = ({ scheduleData, slotsData }) => {
   };
 
   // Every draggable "slot" for this batch on this day — theory cells as
-  // 1-period slots, lab blocks as a single 3-period slot.
+  // 1-period slots, lab blocks as a single 2- or 3-period slot.
   const buildBatchDayRow = (day, batch) => {
     const { map, isT2, batchPmLab, batchAmLab } = getDayTrackInfo(day, batch);
     const track = isT2 ? 2 : 1;
+    const dayExtraLabs = extraLabs.get(`${day}::${track}`) ?? []; // NEW
     const slots = [];
     let pi = 0;
     while (pi < 8) {
@@ -765,6 +857,31 @@ const InstituteView = ({ scheduleData, slotsData }) => {
         pi++;
         continue;
       }
+
+      // NEW — admin-added extra lab for this batch only. Checked before
+      // the fixed AM/PM lab so an extra lab that happens to start at the
+      // same period never gets shadowed by it (in practice they won't
+      // overlap — findFreeLabBlock/classifyLabStart both reserve the
+      // fixed lab's periods — but this keeps the ordering unambiguous).
+      const extraBlock = dayExtraLabs.find((block) => block[0] === pi);
+      if (extraBlock) {
+        const slotKey = `${day}::${track}::${pi}::extralab`;
+        slots.push({
+          key: slotKey,
+          day,
+          track,
+          periods: extraBlock,
+          isLab: true,
+          isExtraLab: true,
+          slotName: null,
+          isManual: true,
+          content: null, // resolved via pendingChanges/effectiveContent as usual
+          isMultiBatch: false,
+        });
+        pi = extraBlock[extraBlock.length - 1] + 1;
+        continue;
+      }
+
       if (isT2 && batchAmLab && pi === AM_LAB_BLOCK[0]) {
         const anchorCell = map[pi] ?? null;
         const entry = getLabEntry(batchAmLab, batch, anchorCell);
@@ -822,7 +939,9 @@ const InstituteView = ({ scheduleData, slotsData }) => {
         day: slot.day,
         track: slot.track,
         periods: slot.periods,
-        entry,
+        entry, // may include assignment_id — passed through unchanged so
+        // the backend can resolve the matching unplaced assignment
+        // instead of just writing an untracked manual override.
       });
       return next;
     });
@@ -849,8 +968,10 @@ const InstituteView = ({ scheduleData, slotsData }) => {
     }
     if (targetSlot.periods.length !== source.periods.length) {
       setDragError(
-        `Can't drop a ${source.periods.length === 3 ? "lab block" : "single period"} onto a ${
-          targetSlot.periods.length === 3 ? "lab block" : "single period"
+        `Can't drop a ${source.periods.length === 1 ? "single period" : `${source.periods.length}-period block`} onto a ${
+          targetSlot.periods.length === 1
+            ? "single period"
+            : `${targetSlot.periods.length}-period block`
         } — they're different sizes.`,
       );
       return;
@@ -882,6 +1003,8 @@ const InstituteView = ({ scheduleData, slotsData }) => {
 
   const handleCancelWeek = () => {
     setPendingChanges(new Map());
+    setExtraLabs(new Map()); // NEW
+    setLabPickMode(null); // NEW
     setDragError(null);
     setBatchEditMode(false);
   };
@@ -910,8 +1033,146 @@ const InstituteView = ({ scheduleData, slotsData }) => {
     });
     if (result?.ok) {
       setPendingChanges(new Map());
+      setExtraLabs(new Map()); // NEW
       setBatchEditMode(false);
     }
+  };
+
+  // ── NEW — flexible extra-lab placement ──────────────────────────────────
+  //
+  // Two ways in: auto-place (scans for a genuinely free block of the given
+  // length) or manual pick (admin clicks the exact starting period). Both
+  // funnel into commitExtraLabBlock, which stages the block and opens the
+  // editor so the admin picks what goes in it.
+  //
+  // IMPORTANT: "free" here means NO existing entry at all for this batch
+  // in every period of the span — not just "not a joint session." The
+  // previous version only excluded multi-batch cells, which meant a
+  // perfectly ordinary single-batch lecture already sitting there looked
+  // "free" and got silently bumped underneath the new lab. Auto-place now
+  // only ever lands on genuinely empty periods; anything else requires the
+  // manual picker, where the admin can see and choose to override.
+
+  const reservedPeriodsFor = (day, track) => {
+    const batch = batchFilter;
+    const { batchAmLab, batchPmLab, isT2 } = getDayTrackInfo(day, batch);
+    const reserved = new Set();
+    if (isT2 && batchAmLab) AM_LAB_BLOCK.forEach((p) => reserved.add(p));
+    if (!isT2 && batchPmLab) PM_LAB_BLOCK.forEach((p) => reserved.add(p));
+    (extraLabs.get(`${day}::${track}`) ?? []).forEach((block) =>
+      block.forEach((p) => reserved.add(p)),
+    );
+    return reserved;
+  };
+
+  const findFreeLabBlock = (day, length) => {
+    const batch = batchFilter;
+    const { map, isT2 } = getDayTrackInfo(day, batch);
+    const track = isT2 ? 2 : 1;
+    const reserved = reservedPeriodsFor(day, track);
+
+    for (let pi = 0; pi <= 8 - length; pi++) {
+      const span = Array.from({ length }, (_, i) => pi + i);
+      if (span.includes(LUNCH_PI)) continue;
+      if (span.some((p) => reserved.has(p))) continue;
+
+      // FIXED — any existing entry at all (not just multi-batch) makes
+      // this span unusable for AUTO placement.
+      const occupied = span.some((p) => {
+        const cell = map[p] ?? null;
+        const entry = getEntryForBatchPeriod(batch, cell);
+        return !!entry;
+      });
+      if (occupied) continue;
+
+      return span;
+    }
+    return null;
+  };
+
+  // For a candidate start period in the manual picker: 'blocked' (spans
+  // lunch, another extra lab, the fixed AM/PM lab, runs off the day, or
+  // would touch a joint/multi-batch session — never clickable), 'occupied'
+  // (a single-batch class is there and would be bumped — clickable, shown
+  // distinctly), or 'free'.
+  const classifyLabStart = (day, start, length) => {
+    const batch = batchFilter;
+    const { map, isT2 } = getDayTrackInfo(day, batch);
+    const track = isT2 ? 2 : 1;
+    const reserved = reservedPeriodsFor(day, track);
+
+    if (start + length > 8) return "blocked";
+    const span = Array.from({ length }, (_, i) => start + i);
+    if (span.includes(LUNCH_PI)) return "blocked";
+    if (span.some((p) => reserved.has(p))) return "blocked";
+
+    let anyOccupied = false;
+    for (const p of span) {
+      const cell = map[p] ?? null;
+      const entry = getEntryForBatchPeriod(batch, cell);
+      if (entry) {
+        if ((entry.batch_names ?? entry.batches ?? []).length > 1) {
+          return "blocked"; // joint session, never touch from here
+        }
+        anyOccupied = true;
+      }
+    }
+    return anyOccupied ? "occupied" : "free";
+  };
+
+  const commitExtraLabBlock = (day, periods) => {
+    const batch = batchFilter;
+    const { isT2 } = getDayTrackInfo(day, batch);
+    const track = isT2 ? 2 : 1;
+    const key = `${day}::${track}`;
+
+    setExtraLabs((prev) => {
+      const next = new Map(prev);
+      next.set(key, [...(next.get(key) ?? []), periods]);
+      return next;
+    });
+    setDragError(null);
+    setLabPickMode(null);
+    setEditingSlot({
+      key: `${day}::${track}::${periods[0]}::extralab`,
+      day,
+      track,
+      periods,
+      isLab: true,
+      isExtraLab: true,
+      content: null,
+      isMultiBatch: false,
+    });
+  };
+
+  const handleAutoAddExtraLab = (day, length) => {
+    const periods = findFreeLabBlock(day, length);
+    if (!periods) {
+      setDragError(
+        `No genuinely free ${length}-period block left on ${day} — try "Pick periods" to place it manually, moving or overriding something if needed.`,
+      );
+      return;
+    }
+    commitExtraLabBlock(day, periods);
+  };
+
+  // Remove an admin-added extra lab entirely (not just clear its content).
+  const handleRemoveExtraLab = (slot) => {
+    setExtraLabs((prev) => {
+      const next = new Map(prev);
+      const key = `${slot.day}::${slot.track}`;
+      const blocks = (next.get(key) ?? []).filter(
+        (b) => b[0] !== slot.periods[0],
+      );
+      if (blocks.length) next.set(key, blocks);
+      else next.delete(key);
+      return next;
+    });
+    setPendingChanges((prev) => {
+      const next = new Map(prev);
+      next.delete(slot.key);
+      return next;
+    });
   };
 
   const renderEditableBatchWeek = () => {
@@ -966,7 +1227,19 @@ const InstituteView = ({ scheduleData, slotsData }) => {
           </div>
         </div>
 
-        <WarningsPanel warnings={scheduleWarnings} batchName={batch} />
+        {/* NEW — batch name + unplaced badge above the warnings panel */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+            {batch}
+          </span>
+          <UnplacedBadge batch={batch} />
+        </div>
+
+        <WarningsPanel
+          warnings={scheduleWarnings}
+          batchName={batch}
+          facultyName={facultyFilter || undefined}
+        />
 
         <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
           <table
@@ -1002,24 +1275,113 @@ const InstituteView = ({ scheduleData, slotsData }) => {
                 const assignedT2 = isBatchOnTrack2(day, batch);
                 const canToggleThisDay = TOGGLE_DAYS.has(day);
                 const pendingOnThisDay = dayHasPendingChanges(day);
+                const pickingThisDay = labPickMode?.day === day; // NEW
 
                 return (
                   <tr key={day}>
-                    <td className="border border-gray-100 dark:border-gray-700 px-3 py-2 text-xs font-semibold text-gray-600 dark:text-gray-300 sticky left-0 bg-white dark:bg-gray-800 z-10">
-                      <div className="flex items-center gap-1.5">
-                        {day.slice(0, 3)}
-                        {canToggleThisDay && (
-                          <TrackToggle
-                            isT2={assignedT2}
-                            isSaving={isSavingTrack}
-                            disabled={pendingOnThisDay}
-                            disabledReason={
-                              pendingOnThisDay
-                                ? "Save or cancel this day's pending changes before switching tracks"
-                                : ""
-                            }
-                            onClick={() => handleToggleTrack(day, batch)}
-                          />
+                    <td className="border border-gray-100 dark:border-gray-700 px-3 py-2 text-xs font-semibold text-gray-600 dark:text-gray-300 sticky left-0 bg-white dark:bg-gray-800 z-10 align-top">
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center gap-1.5">
+                          {day.slice(0, 3)}
+                          {canToggleThisDay && (
+                            <TrackToggle
+                              isT2={assignedT2}
+                              isSaving={isSavingTrack}
+                              disabled={pendingOnThisDay}
+                              disabledReason={
+                                pendingOnThisDay
+                                  ? "Save or cancel this day's pending changes before switching tracks"
+                                  : ""
+                              }
+                              onClick={() => handleToggleTrack(day, batch)}
+                            />
+                          )}
+                        </div>
+
+                        {/* NEW — extra-lab controls: auto-place (2hr/3hr)
+                            or open the manual period picker for this day. */}
+                        {pickingThisDay ? (
+                          <div className="flex flex-wrap items-center gap-1">
+                            {Array.from(
+                              { length: 9 - labPickMode.length },
+                              (_, start) => {
+                                const status = classifyLabStart(
+                                  day,
+                                  start,
+                                  labPickMode.length,
+                                );
+                                if (status === "blocked") return null;
+                                return (
+                                  <button
+                                    key={start}
+                                    onClick={() =>
+                                      commitExtraLabBlock(
+                                        day,
+                                        Array.from(
+                                          { length: labPickMode.length },
+                                          (_, i) => start + i,
+                                        ),
+                                      )
+                                    }
+                                    title={
+                                      status === "occupied"
+                                        ? `${TIME_LABELS[start]} — will replace what's currently there for ${batch}`
+                                        : `${TIME_LABELS[start]} — free`
+                                    }
+                                    className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold transition-colors ${
+                                      status === "free"
+                                        ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40"
+                                        : "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40"
+                                    }`}
+                                  >
+                                    {TIME_LABELS[start]}
+                                  </button>
+                                );
+                              },
+                            )}
+                            <button
+                              onClick={() => setLabPickMode(null)}
+                              className="text-[9px] text-gray-400 hover:text-red-500 px-1"
+                              title="Cancel picking"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleAutoAddExtraLab(day, 3)}
+                              title="Auto-place a 3hr lab in the next genuinely free block"
+                              className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors"
+                            >
+                              +3h Lab
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleAutoAddExtraLab(day, 2)}
+                              title="Auto-place a 2hr lab in the next genuinely free block"
+                              className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors"
+                            >
+                              +2h Lab
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setLabPickMode({ day, length: 3 })}
+                              title="Choose exactly where a 3hr lab goes"
+                              className="text-[9px] px-1.5 py-0.5 rounded-full font-medium text-gray-400 hover:text-purple-500 border border-dashed border-gray-300 dark:border-gray-600 transition-colors"
+                            >
+                              Pick 3h…
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setLabPickMode({ day, length: 2 })}
+                              title="Choose exactly where a 2hr lab goes"
+                              className="text-[9px] px-1.5 py-0.5 rounded-full font-medium text-gray-400 hover:text-purple-500 border border-dashed border-gray-300 dark:border-gray-600 transition-colors"
+                            >
+                              Pick 2h…
+                            </button>
+                          </div>
                         )}
                       </div>
                     </td>
@@ -1105,6 +1467,21 @@ const InstituteView = ({ scheduleData, slotsData }) => {
                                   <XIcon size={8} />
                                 </button>
                               )}
+                              {/* NEW — extra labs can be removed entirely
+                                  (not just cleared), since the block itself
+                                  is admin-added and shouldn't linger empty. */}
+                              {slot.isExtraLab && !locked && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRemoveExtraLab(slot);
+                                  }}
+                                  className="absolute -bottom-1.5 -left-1.5 w-3.5 h-3.5 rounded-full bg-gray-400 dark:bg-gray-600 text-white flex items-center justify-center z-10 hover:bg-red-400 transition-colors"
+                                  title="Remove this extra lab slot entirely"
+                                >
+                                  <Trash2 size={8} />
+                                </button>
+                              )}
                               {manual && !locked && (
                                 <span
                                   title="Manually placed"
@@ -1129,9 +1506,30 @@ const InstituteView = ({ scheduleData, slotsData }) => {
                               )}
                               {slot.isLab && (
                                 <p className="text-[9px] mt-0.5 opacity-50 leading-none">
-                                  Lab
+                                  Lab{slot.periods.length === 2 ? " (2hr)" : ""}
                                 </p>
                               )}
+                            </div>
+                          ) : slot.isExtraLab ? (
+                            // NEW — empty extra-lab block: "+" to fill it,
+                            // a small trash icon to remove the block itself.
+                            <div className="relative w-full h-full">
+                              <button
+                                onClick={() => handleEditSlotClick(slot)}
+                                className="w-full h-full py-1.5 rounded-md text-[10px] text-purple-300 dark:text-purple-700 hover:bg-emerald-50/60 dark:hover:bg-emerald-900/10 hover:text-emerald-500 transition-colors"
+                              >
+                                +
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveExtraLab(slot);
+                                }}
+                                title="Remove this extra lab slot"
+                                className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full bg-gray-400 dark:bg-gray-600 text-white flex items-center justify-center hover:bg-red-400 transition-colors"
+                              >
+                                <XIcon size={8} />
+                              </button>
                             </div>
                           ) : (
                             <button
@@ -1159,6 +1557,10 @@ const InstituteView = ({ scheduleData, slotsData }) => {
             timeLabel={TIME_LABELS[editingSlot.periods[0]]}
             currentEntry={effectiveContent(editingSlot)}
             isSaving={false}
+            isLab={!!editingSlot.isLab}
+            periodCount={editingSlot.periods.length}
+            unplaced={unplacedAssignments}
+            isFetchingUnplaced={isFetchingUnplaced}
             onSave={handleModalSave}
             onClose={() => setEditingSlot(null)}
           />

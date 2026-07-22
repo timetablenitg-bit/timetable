@@ -56,14 +56,22 @@ export async function reconcileOccurrenceReview({
     const needed = assignment.sessions_per_week;
     if (needed == null) continue;
 
+    // FIXED: was scoped to status: "pending", which meant every re-save of
+    // this slot re-created a brand new choose_occurrences/overflow item
+    // even after the admin had already resolved one for this exact
+    // assignment — the structural mismatch (day count vs sessions_per_week)
+    // never goes away on its own, so it kept firing forever. A RESOLVED
+    // item already has the admin's decision (chosen_days / placements)
+    // baked into the grid; re-flagging it as pending again would contradict
+    // that decision instead of respecting it. Checking ANY status means we
+    // only ever create ONE review item per assignment+kind+generation, ever.
     const existing = await ManualReviewItem.findOne({
       session_id,
       generation_id,
       assignment_id: assignment._id,
       kind: { $in: ["overflow", "choose_occurrences"] },
-      status: "pending",
     });
-    if (existing) continue; // already flagged one way or another — don't stack blind
+    if (existing) continue;
 
     if (needed < labelDayCount) {
       await ManualReviewItem.create({
