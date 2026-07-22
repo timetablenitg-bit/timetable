@@ -7,3 +7,5 @@ coverage/
 .vscode/
 .DS_Store
 data.txt
+merge_project.py
+src.txt
