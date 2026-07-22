@@ -518,6 +518,14 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
     return [...seen].sort((a, b) => a.localeCompare(b));
   }, [slots]);
 
+  const batchesWithUnplaced = useMemo(() => {
+    const set = new Set();
+    unplacedAssignments.forEach((a) => {
+      (a.batch_names ?? []).forEach((b) => set.add(b));
+    });
+    return set;
+  }, [unplacedAssignments]);
+
   const getEntry = useCallback(
     (slotName, batch) => {
       const sl = slots.find((s) => s.slot_name === slotName);
@@ -1014,7 +1022,7 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
             <tr>
               <th
                 className="px-3 py-3 text-left text-[11px] font-medium text-gray-400 dark:text-gray-500 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800"
-                style={{ width: 96 }}
+                style={{ width: 132 }}
               >
                 Batch
               </th>
@@ -1050,20 +1058,6 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
                     >
                       {sl.slot_name}
                     </span>
-                    {isEditing && (
-                      <button
-                        onClick={() =>
-                          setAddModal({
-                            slotName: sl.slot_name,
-                            targetBatch: null,
-                          })
-                        }
-                        className="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-gray-700 dark:text-gray-500 dark:hover:bg-gray-600 transition-colors"
-                        title="Add course to this slot"
-                      >
-                        <Plus size={12} />
-                      </button>
-                    )}
                   </div>
                   {(() => {
                     const { dupFacs, dupBatches } = detectConflicts(sl.entries);
@@ -1097,8 +1091,18 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
                   key={batch}
                   className="hover:bg-gray-50/60 dark:hover:bg-gray-800/20 transition-colors"
                 >
-                  <td className="px-3 py-2.5 text-[12px] font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800/60 truncate">
-                    {batch}
+                  <td className="px-3 py-2.5 text-[12px] font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800/60 align-top">
+                    <div className="flex items-start gap-1.5">
+                      <span className="leading-tight break-words line-clamp-2">
+                        {batch}
+                      </span>
+                      {batchesWithUnplaced.has(batch) && (
+                        <span
+                          className="mt-0.5 shrink-0 w-1.5 h-1.5 rounded-full bg-amber-500"
+                          title="This batch has an unplaced course"
+                        />
+                      )}
+                    </div>
                   </td>
                   {slots.map((sl) => {
                     const entry = getEntry(sl.slot_name, batch);
