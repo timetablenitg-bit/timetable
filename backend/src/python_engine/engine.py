@@ -1,13 +1,30 @@
 """
-engine.py  –  v2
+engine.py  –  v3
 ===================
 Orchestrates one generation run:
 
   1. slot_generator.build_slots()       -> buckets + manual_review_items
+                                            + lock_warnings (NEW, v8 of
+                                            slot_generator.py)
   2. timetable_generator.generate_timetable() -> stamps buckets into the
      skeleton's grid shape
   3. scorer.score_timetable()           -> soft-preference score only
   4. timetable_generator.suggest_track_assignments() -> suggestion only
+
+CHANGES FOR SLOT LOCKING (v3):
+  * payload gains an optional "locks" key ({"course": {...}, "empty": {...}},
+    built by timetableController.js::buildLocksPayload). Passed straight
+    through to build_slots() on every attempt.
+  * Locked placements are NOT randomized — _apply_course_locks doesn't touch
+    rng at all, it force-places deterministically off the assignment list.
+    So lock_warnings is effectively identical across all 1000 attempts; we
+    still carry it per-candidate (rather than compute it once outside the
+    loop) so it always matches whichever candidate's `slots`/`manual_review`
+    actually gets chosen as `best`, instead of relying on that invariant
+    holding forever as slot_generator.py evolves.
+  * `locks` defaults to None so this still works unchanged against a
+    payload that has no "locks" key at all (e.g. existing tests, or a
+    session with no locks ever created).
 
 Since placement is now constraint-based (hard-checked at insertion time)
 rather than blind-then-score, we don't need hundreds of random-seed
@@ -52,6 +69,8 @@ def run(payload):
         "occurrence_counts": {...},             # from getSlotOccurrenceCount
         "adjacency_map": {...},                 # from getAdjacencyMap (serialized)
         "skeleton_days_by_label": {...},        # label -> [days], for choose_occurrences scoping
+        "locks": {"course": {...}, "empty": {...}},  # NEW, optional — see
+                                                       # timetableController.js::buildLocksPayload
     }
     """
     start = time.time()
@@ -61,13 +80,14 @@ def run(payload):
     occurrence_counts = payload["occurrence_counts"]
     adjacency_map = payload["adjacency_map"]
     skeleton_days_by_label = payload["skeleton_days_by_label"]
+    locks = payload.get("locks")  # NEW
 
     best = None
 
     for attempt in range(1, ATTEMPTS + 1):
-        slots, manual_review = build_slots(
+        slots, manual_review, lock_warnings = build_slots(
             assignments, occurrence_counts, adjacency_map,
-            skeleton_days_by_label, seed=attempt,
+            skeleton_days_by_label, seed=attempt, locks=locks,
         )
         lab_entries_by_day = _lab_entries_by_day(slots)
         timetable = generate_timetable(skeleton_cells, lab_entries_by_day)
@@ -81,6 +101,7 @@ def run(payload):
             "timetable": timetable,
             "score": score,
             "manual_review": manual_review,
+            "lock_warnings": lock_warnings,  # NEW — rides with the candidate
             "lab_entries_by_day": lab_entries_by_day,
         }
 
@@ -103,6 +124,7 @@ def run(payload):
         "score": best["score"],
         "manual_review_items": best["manual_review"],
         "suggested_track_assignments": suggested_tracks,
+        "lock_warnings": best["lock_warnings"],  # NEW
         "meta": {
             "total_attempts": ATTEMPTS,
             "generation_time_ms": elapsed,

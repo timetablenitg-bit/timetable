@@ -147,6 +147,14 @@ export const API_PATHS = {
       `/api/v1/admin/timetable/engine/manual-review/${item_id}/minor-oe-availability`,
     SAVE_BATCH_WEEK: (timetable_id) =>
       `/api/v1/admin/timetable/engine/schedule/${timetable_id}/batch-week`,
+
+    LOCKS: (session_id) =>
+      `/api/v1/admin/timetable/engine/locks?session_id=${session_id}`,
+    LOCK_COURSE: `/api/v1/admin/timetable/engine/locks/course`,
+    LOCK_EMPTY: `/api/v1/admin/timetable/engine/locks/empty`,
+    DELETE_LOCK: (lock_id) => `/api/v1/admin/timetable/engine/locks/${lock_id}`,
+    CLEAR_LOCKS: (session_id) =>
+      `/api/v1/admin/timetable/engine/locks?session_id=${session_id}`,
   },
 
   STUDENT: {

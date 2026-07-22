@@ -1,168 +1,57 @@
 """
-slot_generator.py  –  v7
+slot_generator.py  –  v8
 =============================================
-Changes from v6:
+Changes from v7:
 
-  * NEW (priority): courses/labs carrying 0 credits are not real courses
-    and are now filtered out at the very top of build_slots(), before
-    lab/non-lab splitting, before sync-group resolution, before anything
-    else touches them. They get NO slot and are NOT routed to
-    manual_review either — they simply vanish from this run, same as if
-    they'd never been submitted. (Previously a 0-credit assignment fell
-    through _classify()'s credit check to "theory" and competed for a
-    regular slot on equal footing with everything else, per the bug
-    report.)
+  * NEW: `locks` param (from Node's SlotLock collection, reshaped by
+    timetableController.js::buildLocksPayload into
+    { course: { assignment_id: slot_name }, empty: { slot_name: [batch_id,...] } }).
 
-  * NEW (priority): 4-credit and 3-credit courses now get first pick of
-    slots. sync_groups (and, separately, lab placement groups) are sorted
-    so that any group containing a 4- or 3-credit course is placed before
-    groups that don't. This is a stable sort — groups of equal priority
-    keep their original relative order, so the existing rng-based shuffle
-    inside _rank_candidates (and the batch-size ordering for labs) still
-    does its job within each priority tier. This only changes iteration
-    order; every existing placement rule (adjacency, faculty/batch clash,
-    sync anchoring, shared_lab_with exclusion, TUT routing, etc.) is
-    unchanged and still applies exactly as before.
+    Two effects:
 
-Changes from v5 (still in effect):
+    1. COURSE LOCKS are resolved *before* anything else touches
+       `assignments`. A locked assignment is pulled out of the normal
+       classify/group/place pipeline entirely and force-placed directly
+       into its target bucket (see `_apply_course_locks`). This applies
+       equally to lab and non-lab assignments — a lock's slot_name can be
+       a theory label ("B") or a concrete lab bucket ("LAB_MONDAY"), and
+       forcing works the same way for both since buckets are just
+       label -> [entries] either way.
 
-  * courses/labs that got ZERO automatic placement (no eligible label
-    had room at all — typically because a batch has more courses than the
-    6 regular slots can hold) are emitted as manual_review kind
-    "unplaced" instead of "overflow". This is a genuinely different admin
-    action: an unplaced course can ONLY be squeezed into an empty minor(G)/
-    OE(H) period at the admin's discretion (see manualReviewController.js::
-    resolveUnplacedItem), never into an arbitrary free regular cell the way
-    a partial overflow can. Two call sites changed:
-      - _place_group's "could not place the group at all" branch
-      - _place_labs's "no day worked for this group" branch
-    The TUT rule-1 branch (tutorial-classified courses, always routed to
-    manual review regardless of room) stays "overflow" — that's categorical
-    admin-discretion-by-design, not a capacity failure, and isn't
-    restricted to minor/OE.
-    The partial-overflow branch (spw > anchor_count, i.e. SOME placement
-    happened but not enough) is unchanged — still "overflow".
+       Forcing does NOT run through _can_place — the whole point of a
+       lock is "put it here regardless." But we still *check* for a
+       faculty/batch double-book or adjacency clash against whatever's
+       already in that bucket, and surface it as a `lock_warnings` entry
+       instead of silently ignoring it. Nothing about a locked
+       assignment is ever routed to manual_review — locking is
+       definitionally "the admin already decided where this goes."
 
-Changes from v4 (still in effect):
+       If two course locks target the same assignment (shouldn't happen —
+       slotLockController.js upserts per-assignment — but defensively) the
+       later one in iteration order wins.
 
-  * BUGFIX: `shared_lab_with` anti-affinity was silently unenforced
-    whenever the two linked assignments belonged to the SAME course.
-    `_group_lab_assignments_by_course` grouped every lab assignment for
-    a course into a single atomic placement block *before* the
-    exclusion map was ever consulted, and that block is always placed
-    on one single day. Two same-course assignments therefore always
-    landed on the same day together, and the exclusion check (which
-    only compares a group being placed against *other already-placed
-    groups*) never got a chance to fire, because they were the same
-    group.
+    2. EMPTY LOCKS remove a label from the eligible-candidate list for any
+       group whose batch set overlaps the lock's batch_ids, for both the
+       theory path (_rank_candidates candidates are filtered before
+       ranking) and the lab path (a day is skipped if occurrence_counts'
+       equivalent LAB_<DAY> key is empty-locked against the group's
+       batches). This is a soft steer at generation time only — it does
+       not touch cells directly, it just keeps the generator from ever
+       proposing a placement there for those batches. A course lock
+       ALWAYS wins over an empty lock if they'd conflict (forcing bypasses
+       eligibility filtering entirely) — that's an admin contradiction and
+       we let the more specific/explicit instruction (the course lock) win,
+       surfaced via lock_warnings if it actually collides.
 
-    This is exactly the most common real case for the field (two
-    batch-split lab sections of the same course sharing one physical
-    lab room, needing to run on different days). Fixed by building the
-    lab exclusion map first and passing it into
-    `_group_lab_assignments_by_course`, which now splits a course's
-    assignments into separate singleton placement groups whenever an
-    exclusion edge exists between any of them. Course-level batch-split
-    convenience grouping is otherwise unchanged for courses with no
-    internal shared_lab_with links.
+  * `build_slots` signature gains `locks=None` (defaults to no-op so
+    existing callers/tests don't break) and now returns a 3-tuple:
+    `(slots_dict, manual_review, lock_warnings)`. main.py/engine.py need
+    the one-line change to thread the third value through as
+    `result["lock_warnings"]`.
 
-Changes from v3 (still in effect):
-
-  * shared_lab_with SEMANTICS FLIP (schema change: ref went from Course
-    to CourseAssignment). Previously this field meant "merge these lab
-    assignments into one combined block" — two linked assignments got a
-    shared shared_group_id and were placed together on purpose, with
-    same-faculty overlap explicitly waived for members of that group.
-    That's gone. The field is now an ANTI-AFFINITY constraint: linked
-    assignments compete for the same physical lab resource and must NOT
-    land on the same lab day, full stop, regardless of faculty/batch.
-
-    Course-level batch-split grouping (assignments sharing a course_id
-    auto-placed together) is UNCHANGED in spirit but is now
-    exclusion-aware — see the v5 bugfix above — and is otherwise
-    independent of shared_lab_with — `_resolve_shared_lab_groups` (course-id
-    graph + shared_lab_with union-find) is gone, replaced by
-    `_group_lab_assignments_by_course` (grouping, now exclusion-aware) and
-    `_build_lab_exclusion_map` (pairwise exclusion, built over
-    assignment ids, no transitive closure — only direct explicit pairs
-    are honored, per the "ONLY if explicitly linked" rule).
-
-    NOTE: `_build_lab_exclusion_map` only recognizes ids that belong to
-    another *lab*-classified assignment in this run (`valid_ids` is
-    scoped to `lab_assignments`). If shared_lab_with references a
-    non-lab assignment, that reference is silently ignored here — see
-    the "flag elsewhere" notes for why this should be validated
-    upstream instead.
-
-Changes from v2 (still in effect):
-
-  * BUGFIX (rule 2.1): `_clashes_with_adjacency` was blocking on BOTH
-    faculty overlap AND batch overlap between neighboring labels. The
-    rule only ever asked for faculty back-to-back to be avoided — a
-    batch sitting in two consecutive periods is completely normal
-    timetable structure, and same-slot batch collision is already
-    handled separately by `_clashes_in_bucket`. The batch check here was
-    silently killing placement for almost any reasonably full course
-    load, which is why so much was overflowing to manual review. Removed.
-
-  * RULE 5: faculty back-to-back was previously a hard, zero-tolerance
-    block. Rule 5 asks for up to 2 instances per faculty to be *allowed*
-    with a scoring penalty rather than forced into manual review. Each
-    label now threads a shared `faculty_violation_counts` dict through
-    placement; the first two adjacency hits for a given faculty are
-    permitted and the placed entries are flagged
-    `adjacency_soft_violation=True` so scorer.py can penalize them. Only
-    the 3rd+ hit for that faculty is a hard block.
-
-  * RULE 1 (TUT): tutorial-classified assignments are no longer run
-    through the normal placement path at all. TUT slots are reserved
-    for the admin's discretion, not auto-filled by the generator, so
-    every tutorial-classified assignment is routed straight to manual
-    review regardless of whether a TUT label technically had room.
-
-No more blind bin-packing into a fixed A-F/G/H/TUT/1-CREDIT alphabet.
-Instead:
-
-  * `occurrence_counts`  (label -> how many distinct days/week it occurs,
-     derived Node-side from the active skeleton via
-     utils/skeletonDerivation.js::getSlotOccurrenceCount)
-  * `adjacency_map`      (label -> [labels that ever sit immediately next
-     to it, unioned across both possible tracks — see decision #5)
-
-...are passed in as part of the engine's stdin payload and drive every
-placement decision. Nothing here assumes "there are exactly slots A-F and
-each repeats 3x" any more — that was the old hardcoded behaviour.
-
-Anything that can't be cleanly auto-placed (no label offers enough
-occurrences, or every candidate clashes) is NOT dropped silently and NOT
-overflowed into whatever special slot happens to be free. It's returned
-in `manual_review_items` for the Node layer to persist and surface to the
-admin (models/manualReviewModel.js) — as "overflow", "choose_occurrences",
-or (v6+) "unplaced", depending on which failure mode it is.
-
-synced_with groups: resolved into connected components first. The whole
-group is anchored to the smallest-sessions_per_week member's label/days.
-Members needing MORE sessions than the anchor offers get the excess
-routed into the same overflow manual-review path as an ordinary
-overflow course. Members needing FEWER occurrences than the anchor
-label's total count get a choose_occurrences manual-review item, scoped
-to the anchor's actual days — same mechanism a standalone 2-credit
-course goes through. There is no separate sync-specific placement path;
-sync only decides which label a group is anchored to (decision #6).
-
-shared_lab_with: two lab assignments linked this way must NOT be placed
-on the same lab day (anti-affinity, see the v4 changelog above). This is
-now the only meaning of shared_lab_with; it no longer merges entries.
-Same-faculty/batch collision within a single course's own batch-split
-group is still checked like anything else. No room/resource concept
-exists anywhere else in this system (decision #1) — this exclusion map
-is effectively standing in for "same physical lab" without modeling labs
-as a resource generally.
-
-priority (v7): 4- and 3-credit courses are placed before everything
-else, and 0-credit "courses" are placed never (filtered out up front).
-This is purely an ordering/filtering change on top of the placement
-rules above — it does not add a new rule of its own.
+Everything from v7 (priority ordering, 0-credit filtering, unplaced vs
+overflow, shared_lab_with anti-affinity, faculty adjacency soft-tolerance)
+is unchanged and still applies to every assignment that ISN'T locked.
 """
 
 import sys
@@ -173,18 +62,9 @@ from collections import defaultdict
 LAB_DAYS = ["Monday", "Tuesday", "Thursday"]
 LAB_LABEL = "LAB"
 
-# Faculty back-to-back is a soft constraint (rule 5): the first two
-# adjacency hits for a given faculty in a run are allowed (and penalized
-# in scorer.py); the 3rd+ is a hard block.
 MAX_FACULTY_ADJACENCY_VIOLATIONS = 2
-
-# Credit values that get first pick of slots (v7 priority rule).
 PRIORITY_CREDITS = (3, 4)
 
-# Label -> classification, purely by naming convention (matches the
-# default skeleton seeded from the old hardcoded TEMPLATE). If the admin
-# introduces new label names via the skeleton editor, they fall through
-# to "theory" unless they match one of these reserved names.
 SPECIAL_CLASSIFICATION = {
     "G": "minor",
     "H": "oe",
@@ -205,9 +85,10 @@ def _make_entry(a, sync_group_id=None):
         "assignment_id": str(a["_id"]),
         "component_type": a.get("component_type", "lecture"),
         "sync_group_id": sync_group_id,
-        # Rule 5: set True if this entry landed next to a label already
-        # holding the same faculty, within the tolerated allowance.
         "adjacency_soft_violation": False,
+        # NEW — purely informational, lets the frontend badge a cell as
+        # admin-pinned rather than engine-placed.
+        "is_locked": False,
     }
 
 def _make_lab_entry(a, sync_group_id=None, shared_group_id=None):
@@ -239,28 +120,16 @@ def _classify(a):
     return "theory"
 
 def _credits(a):
-    """Course credit count, used for the 0-credit exclusion and the
-    3/4-credit priority rule (v7). Falls back to sessions_per_week the
-    same way _classify() does, so it stays consistent with how the rest
-    of the engine already infers credits when course_id.credits is
-    missing.
-    """
     return int(a.get("course_id", {}).get("credits", a.get("sessions_per_week", 1)))
 
 def _sessions_per_week(a):
     return int(a.get("sessions_per_week") or a.get("course_id", {}).get("credits", 1))
 
 def _eligible_labels(classification, occurrence_counts):
-    """Which skeleton labels are valid targets for a given classification.
-
-    Note: "tutorial" classified assignments never reach this function —
-    build_slots() routes them straight to manual review before calling
-    _place_group (rule 1: TUT is admin-discretion only, not auto-filled).
-    """
     labels = []
     for label, count in occurrence_counts.items():
         if label == LAB_LABEL:
-            continue  # labs are handled by the dedicated lab pass below
+            continue
         kind = SPECIAL_CLASSIFICATION.get(label, "theory")
         if kind == classification:
             labels.append(label)
@@ -269,13 +138,6 @@ def _eligible_labels(classification, occurrence_counts):
 # ── connected components for synced_with ────────────────────────────────────
 
 def _resolve_sync_groups(assignments):
-    """
-    synced_with holds CourseAssignment _ids, possibly not symmetric in the
-    data (A lists B, but B might not list A). Build an undirected graph
-    and return connected components as lists of assignment dicts.
-    Assignments with no synced_with (or empty) are their own singleton
-    group.
-    """
     by_id = {str(a["_id"]): a for a in assignments}
     adj = defaultdict(set)
 
@@ -293,7 +155,6 @@ def _resolve_sync_groups(assignments):
         aid = str(a["_id"])
         if aid in visited:
             continue
-        # BFS
         stack = [aid]
         component = []
         while stack:
@@ -310,19 +171,11 @@ def _resolve_sync_groups(assignments):
 # ── priority ordering (v7) ───────────────────────────────────────────────────
 
 def _group_priority(group):
-    """0 = top priority (placed first), 1 = everything else.
-
-    A synced_with group gets top priority if ANY member is a 3- or
-    4-credit course — the group is anchored/placed as a unit anyway, so
-    if the admin bundled a priority course into the sync, the whole
-    bundle should get first pick of slots along with it.
-    """
     return 0 if any(_credits(a) in PRIORITY_CREDITS for a in group) else 1
 
 # ── hard-constraint checks ───────────────────────────────────────────────────
 
 def _occupants(bucket):
-    """(faculty_ids used, batch_ids used) currently in a label's bucket."""
     faculty_ids = set()
     batch_ids = set()
     for e in bucket:
@@ -331,20 +184,9 @@ def _occupants(bucket):
     return faculty_ids, batch_ids
 
 def _clashes_in_bucket(entries_to_place, bucket, sync_group_id):
-    """
-    entries_to_place: the (one or more, if synced) entries that would all
-    land in this same bucket together.
-    Same-faculty members of the SAME sync group count as one occupant
-    (genuine combined class) — they don't clash with each other, but they
-    DO still clash with anything else already in the bucket, and
-    different-faculty sync members are independently checked like normal
-    entries (decision #6).
-    """
     existing_faculty, existing_batches = _occupants(bucket)
 
     for e in entries_to_place:
-        # skip comparison against fellow group members with the same
-        # faculty — that's the intentional combined-class case.
         others_in_batch_check = [
             o for o in entries_to_place
             if o is not e and not (
@@ -370,20 +212,6 @@ def _clashes_in_bucket(entries_to_place, bucket, sync_group_id):
 def _clashes_with_adjacency(entries_to_place, label, buckets, adjacency_map,
                              faculty_violation_counts,
                              max_violations=MAX_FACULTY_ADJACENCY_VIOLATIONS):
-    """
-    Rule 2.1 / rule 5: only FACULTY back-to-back is constrained — a batch
-    sitting in two consecutive periods is normal timetable structure, not
-    a clash (same-slot batch collision is handled separately by
-    _clashes_in_bucket, and that check is untouched).
-
-    Rule 5: a given faculty is allowed up to `max_violations` back-to-back
-    instances across the whole run before this becomes a hard block.
-    Instances under that limit are permitted here but reported back as
-    soft hits so the caller can flag the entries and bump the shared
-    counter — scorer.py penalizes flagged entries.
-
-    Returns (blocked: bool, soft_violation_faculty_ids: set)
-    """
     neighbor_labels = adjacency_map.get(label, [])
     soft_hits = set()
     for neighbor_label in neighbor_labels:
@@ -398,7 +226,6 @@ def _clashes_with_adjacency(entries_to_place, label, buckets, adjacency_map,
 
 def _can_place(entries_to_place, label, buckets, adjacency_map, sync_group_id,
                 faculty_violation_counts):
-    """Returns (can_place: bool, soft_violation_faculty_ids: set)."""
     bucket = buckets.get(label, [])
     if _clashes_in_bucket(entries_to_place, bucket, sync_group_id):
         return False, set()
@@ -412,13 +239,6 @@ def _can_place(entries_to_place, label, buckets, adjacency_map, sync_group_id,
 # ── candidate ranking ────────────────────────────────────────────────────────
 
 def _rank_candidates(eligible_labels, occurrence_counts, spw, rng):
-    """
-    Prefer an exact match (count == spw, no admin follow-up needed).
-    Then prefer the smallest count >= spw (least excess -> smaller
-    choose_occurrences ask). Then, as a last resort, the largest count
-    < spw (best partial placement -> smallest overflow ask).
-    Shuffled within each tier for load balancing across generation runs.
-    """
     exact = [l for l in eligible_labels if occurrence_counts.get(l, 0) == spw]
     over = sorted(
         (l for l in eligible_labels if occurrence_counts.get(l, 0) > spw),
@@ -442,13 +262,6 @@ def _overflow_item(a, sessions_needed, reason):
     }
 
 def _unplaced_item(a, sessions_needed, reason):
-    """
-    v6 — for assignments that got ZERO automatic placement (no eligible
-    label had room at all, or no lab day worked). Distinct from
-    "overflow": the admin's only legal move here is a minor/OE override
-    (see manualReviewController.js::resolveUnplacedItem /
-    computeMinorOeAvailability.js), not "place anywhere free".
-    """
     return {
         "assignment_id": str(a["_id"]),
         "kind": "unplaced",
@@ -469,22 +282,106 @@ def _choose_occurrences_item(a, anchor_label, available_days, sessions_to_choose
 def _days_for_label(label, skeleton_days_by_label):
     return skeleton_days_by_label.get(label, [])
 
+# ── NEW (v8): lock application ───────────────────────────────────────────────
+
+def _lock_warning(a, slot_name, message):
+    return {
+        "assignment_id": str(a["_id"]),
+        "slot_name": slot_name,
+        "message": message,
+    }
+
+def _empty_locked_batches_for(label, empty_locks):
+    """Which batch_ids are locked OFF this label. `label` here is already the
+    concrete bucket key — a theory label like 'B', or a lab bucket like
+    'LAB_MONDAY' — matching how empty locks are stored (slotLockController
+    expands the 'LAB' skeleton placeholder into the three concrete names at
+    lock-creation time, so no further expansion is needed here)."""
+    return set(empty_locks.get(label, []))
+
+def _group_blocked_by_empty_lock(group_batch_ids, label, empty_locks):
+    locked_batches = _empty_locked_batches_for(label, empty_locks)
+    if not locked_batches:
+        return False
+    return bool(set(group_batch_ids) & locked_batches)
+
+def _apply_course_locks(assignments, occurrence_counts, buckets, locks,
+                         faculty_violation_counts, lock_warnings):
+    """
+    Pulls every course-locked assignment out of `assignments` and force-places
+    it directly into its target bucket. Returns the remaining (unlocked)
+    assignments for the normal pipeline to process.
+
+    Force-place means: skip _can_place entirely (the admin's decision
+    overrides eligibility/clash checks), but still detect what it collides
+    with and report it via lock_warnings rather than silently corrupting the
+    conflict-detection state other unlocked placements rely on.
+    """
+    course_locks = locks.get("course") or {}
+    if not course_locks:
+        return list(assignments)
+
+    remaining = []
+    for a in assignments:
+        aid = str(a["_id"])
+        target = course_locks.get(aid)
+        if target is None:
+            remaining.append(a)
+            continue
+
+        entry = _make_entry(a)
+        entry["is_locked"] = True
+        if a.get("component_type") == "lab" or a.get("duration", 1) > 1:
+            entry.update({"is_lab": True, "duration": a.get("duration", 3)})
+
+        bucket = buckets.setdefault(target, [])
+
+        existing_faculty, existing_batches = _occupants(bucket)
+        if entry["faculty_id"] in existing_faculty:
+            lock_warnings.append(_lock_warning(
+                a, target,
+                f"{a['course_id']['course_code']} is locked to '{target}', but "
+                f"its faculty is already teaching something else there.",
+            ))
+        if set(entry["batch_ids"]) & existing_batches:
+            lock_warnings.append(_lock_warning(
+                a, target,
+                f"{a['course_id']['course_code']} is locked to '{target}', but "
+                f"one of its batches already has a class there.",
+            ))
+
+        bucket.append(entry)
+
+        if occurrence_counts.get(target, 0) == 0:
+            lock_warnings.append(_lock_warning(
+                a, target,
+                f"'{target}' isn't a recognized recurring label in the active "
+                f"skeleton — {a['course_id']['course_code']} was still pinned "
+                f"there, but check it prints correctly.",
+            ))
+
+    return remaining
+
 # ── theory / minor / oe / 1-credit placement (unified) ─────────────────────
-# (tutorial is intercepted earlier in build_slots and never reaches here)
 
 def _place_group(group, classification, buckets, occurrence_counts,
                   adjacency_map, skeleton_days_by_label, manual_review, rng,
-                  faculty_violation_counts):
-    """
-    group: list of assignment dicts that are all synced together (size 1
-    if not synced). Anchored to the member with the smallest spw.
-    """
+                  faculty_violation_counts, empty_locks):
     sync_group_id = str(uuid.uuid4()) if len(group) > 1 else None
 
     anchor = min(group, key=_sessions_per_week)
     anchor_spw = _sessions_per_week(anchor)
 
+    group_batch_ids = {
+        str(b["_id"]) for a in group for b in a["batch_ids"]
+    }
+
     eligible = _eligible_labels(classification, occurrence_counts)
+    # NEW (v8): drop any label this group is empty-locked out of.
+    eligible = [
+        l for l in eligible
+        if not _group_blocked_by_empty_lock(group_batch_ids, l, empty_locks)
+    ]
     candidates = _rank_candidates(eligible, occurrence_counts, anchor_spw, rng)
 
     entries_by_assignment = {
@@ -505,24 +402,19 @@ def _place_group(group, classification, buckets, occurrence_counts,
             break
 
     if placed_label is None:
-        # Could not place the group at all -> everyone goes to manual
-        # review as UNPLACED (not overflow, v6) — the admin's only real
-        # option here is a minor/OE override at their discretion, not
-        # "place anywhere free" (that's reserved for genuine overflow).
         for a in group:
             manual_review.append(_unplaced_item(
                 a, _sessions_per_week(a),
                 f"No skeleton label of type '{classification}' could fit "
                 f"{a['course_id']['course_code']} without a faculty/batch "
-                f"or adjacency clash. Can only be placed into an empty "
-                f"minor/OE period at admin discretion.",
+                f"or adjacency clash (or every eligible label is locked empty "
+                f"for its batch). Can only be placed into an empty minor/OE "
+                f"period at admin discretion, or locked to a specific slot.",
             ))
         return
 
     buckets.setdefault(placed_label, []).extend(all_entries)
 
-    # Rule 5: commit the soft violations — bump the shared per-faculty
-    # counter and flag the placed entries so scorer.py can penalize them.
     if placed_soft_hits:
         for fid in placed_soft_hits:
             faculty_violation_counts[fid] = faculty_violation_counts.get(fid, 0) + 1
@@ -549,28 +441,10 @@ def _place_group(group, classification, buckets, occurrence_counts,
                 f"pick {spw} of the {anchor_count} days label "
                 f"'{placed_label}' occurs on ({', '.join(anchor_days)}).",
             ))
-        # spw == anchor_count -> perfectly placed, nothing further needed.
 
 # ── lab placement ────────────────────────────────────────────────────────────
 
 def _group_lab_assignments_by_course(lab_assignments, exclusion_map):
-    """
-    Assignments for the same course are still placed together as one lab
-    block by default — this is a batch-split convenience, independent of
-    shared_lab_with in the general case.
-
-    BUGFIX (v5): if two assignments *within the same course* are linked
-    via shared_lab_with, merging them unconditionally into one block
-    would place them on the same day together, and the anti-affinity
-    check would never get a chance to run (it only compares a group
-    being placed against other, separately-placed groups). So: whenever
-    a course's assignments contain an internal shared_lab_with edge, we
-    don't merge that course at all — every assignment in it becomes its
-    own singleton placement group instead, so each goes through
-    placement (and therefore the exclusion check against each other)
-    independently. Courses with no internal exclusion edges are grouped
-    exactly as before.
-    """
     by_course = defaultdict(list)
     for a in lab_assignments:
         by_course[str(a["course_id"]["_id"])].append(a)
@@ -589,17 +463,6 @@ def _group_lab_assignments_by_course(lab_assignments, exclusion_map):
     return groups
 
 def _build_lab_exclusion_map(lab_assignments):
-    """
-    shared_lab_with now holds CourseAssignment _ids (was Course _ids).
-    It's an anti-affinity constraint, not a merge request: linked
-    assignments compete for the same physical lab and must NOT be placed
-    on the same lab day, regardless of faculty/batch overlap. Only
-    direct explicit pairs are honored (no transitive closure), and only
-    ids that belong to another lab-classified assignment in this run are
-    recognized — a reference to a non-lab assignment is silently dropped
-    here (see the "flag elsewhere" notes: this really should be
-    validated upstream instead of swallowed here).
-    """
     valid_ids = {str(a["_id"]) for a in lab_assignments}
     exclusion = defaultdict(set)
     for a in lab_assignments:
@@ -612,32 +475,14 @@ def _build_lab_exclusion_map(lab_assignments):
     return exclusion
 
 def _place_labs(lab_assignments, occurrence_counts, adjacency_map, manual_review, rng,
-                 faculty_violation_counts):
-    """
-    Builds LAB_MONDAY / LAB_TUESDAY / LAB_THURSDAY arrays. Course-level
-    batch-split groups are placed together as one block (see
-    _group_lab_assignments_by_course), except where shared_lab_with
-    forces a split within the course itself (v5 bugfix).
-    shared_lab_with-linked assignments are kept OFF the same day as each
-    other (see _build_lab_exclusion_map) — this is checked independently
-    of, and in addition to, the normal faculty/batch clash and adjacency
-    checks (decision #1, #4).
-
-    v7: groups are ordered priority-first (any 3- or 4-credit course in
-    the group jumps the queue), then by batch-size as before, so
-    priority labs get first pick of days just like priority theory
-    courses get first pick of labels.
-    """
+                 faculty_violation_counts, empty_locks):
     lab_slots = {day: [] for day in LAB_DAYS}
     lab_label_days = [d for d in LAB_DAYS if occurrence_counts.get(LAB_LABEL, 0) > 0]
     if not lab_label_days:
-        lab_label_days = LAB_DAYS  # fall back if skeleton didn't report it
+        lab_label_days = LAB_DAYS
 
-    # Build the exclusion map FIRST — grouping needs to know about it so
-    # it doesn't merge mutually-excluded assignments into one atomic
-    # block before the exclusion check ever gets a chance to run.
     exclusion_map = _build_lab_exclusion_map(lab_assignments)
-    placed_day_by_assignment = {}  # assignment_id -> day it landed on
+    placed_day_by_assignment = {}
 
     groups = _group_lab_assignments_by_course(lab_assignments, exclusion_map)
     groups.sort(key=lambda g: (_group_priority(g), -sum(len(a["batch_ids"]) for a in g)))
@@ -646,13 +491,17 @@ def _place_labs(lab_assignments, occurrence_counts, adjacency_map, manual_review
         shared_group_id = str(uuid.uuid4()) if len(group) > 1 else None
         entries = [_make_lab_entry(a, shared_group_id=shared_group_id) for a in group]
         group_ids = {str(a["_id"]) for a in group}
+        group_batch_ids = {str(b["_id"]) for a in group for b in a["batch_ids"]}
 
         placed_day = None
         placed_soft_hits = set()
         for day in rng.sample(lab_label_days, len(lab_label_days)):
-            # anti-affinity: skip this day if any assignment in the group
-            # is linked (via shared_lab_with) to something already placed
-            # here today.
+            bucket_key = f"LAB_{day.upper()}"
+
+            # NEW (v8): skip this day if the group is empty-locked out of it.
+            if _group_blocked_by_empty_lock(group_batch_ids, bucket_key, empty_locks):
+                continue
+
             blocked_by_exclusion = any(
                 placed_day_by_assignment.get(linked_id) == day
                 for aid in group_ids
@@ -683,14 +532,13 @@ def _place_labs(lab_assignments, occurrence_counts, adjacency_map, manual_review
             for aid in group_ids:
                 placed_day_by_assignment[aid] = placed_day
         else:
-            # v6: no day worked at all for this group -> UNPLACED, not
-            # overflow. Same rationale as the theory-side branch above.
             for a in group:
                 manual_review.append(_unplaced_item(
                     a, 1,
                     f"Lab {a['course_id']['course_code']} could not be placed "
-                    f"on any of {', '.join(lab_label_days)} without a clash "
-                    f"or a lab-resource conflict with a linked assignment.",
+                    f"on any of {', '.join(lab_label_days)} without a clash, a "
+                    f"lab-resource conflict with a linked assignment, or every "
+                    f"day being locked empty for its batch.",
                 ))
 
     return lab_slots
@@ -698,46 +546,43 @@ def _place_labs(lab_assignments, occurrence_counts, adjacency_map, manual_review
 # ── entry point ───────────────────────────────────────────────────────────
 
 def build_slots(assignments, occurrence_counts, adjacency_map,
-                 skeleton_days_by_label, seed=1):
+                 skeleton_days_by_label, seed=1, locks=None):
     """
-    occurrence_counts / adjacency_map: see utils/skeletonDerivation.js —
-    computed Node-side from the active skeleton and passed straight
-    through the JSON payload.
-    skeleton_days_by_label: label -> [days it occurs on], also derived
-    Node-side (companion to occurrence_counts; needed to scope
-    choose_occurrences items to real days).
+    Returns (slots_dict, manual_review, lock_warnings).
+
+    `locks`: { "course": { assignment_id: slot_name }, "empty": { slot_name:
+    [batch_id,...] } }. Defaults to empty on both keys if not provided, so
+    existing callers see identical behaviour to v7.
     """
+    locks = locks or {}
+    course_locks = locks.get("course") or {}
+    empty_locks = locks.get("empty") or {}
+
     rng = random.Random(seed)
     manual_review = []
-
-    # Rule 5: shared across the whole run so a faculty's violation count
-    # accumulates across every label/group they're placed into, not just
-    # within one group's placement attempt.
+    lock_warnings = []
     faculty_violation_counts = {}
 
-    # v7 priority rule: a 0-credit course is no course at all — filter it
-    # out before anything else (lab/non-lab split, sync resolution,
-    # placement, manual_review) ever sees it. No slot, no manual_review
-    # entry, nothing.
     assignments = [a for a in assignments if _credits(a) != 0]
+
+    buckets = {}
+
+    # NEW (v8): resolve every course lock FIRST, against the full assignment
+    # list (before lab/non-lab split — a lock can target a lab bucket just as
+    # well as a theory label). Locked assignments never enter the normal
+    # pipeline below.
+    assignments = _apply_course_locks(
+        assignments, occurrence_counts, buckets, {"course": course_locks},
+        faculty_violation_counts, lock_warnings,
+    )
 
     lab_assignments = [a for a in assignments if _classify(a) == "lab"]
     non_lab = [a for a in assignments if _classify(a) != "lab"]
 
     sync_groups = _resolve_sync_groups(non_lab)
-
-    # v7 priority rule: 4- and 3-credit courses get first pick of slots.
-    # Stable sort — groups that are equally (non-)priority keep their
-    # original relative order, so this only changes which priority tier
-    # goes first, not the load-balancing behaviour within a tier.
     sync_groups.sort(key=_group_priority)
 
-    buckets = {}
     for group in sync_groups:
-        # All members of a sync group are expected to share a
-        # classification (they're meant to occupy the same slot). If they
-        # don't, we classify by the anchor (smallest-spw member) and flag
-        # the mismatch for the admin rather than silently guessing.
         classifications = {_classify(a) for a in group}
         if len(classifications) > 1:
             print(
@@ -749,13 +594,6 @@ def build_slots(assignments, occurrence_counts, adjacency_map,
         classification = _classify(anchor)
 
         if classification == "tutorial":
-            # Rule 1: TUT slots are reserved for the admin's discretion.
-            # The generator does not auto-place tutorial-classified
-            # assignments at all, regardless of TUT's occurrence count —
-            # every member goes straight to manual review. This stays
-            # "overflow" (not "unplaced") — it's categorical
-            # admin-discretion-by-design, not a capacity failure, and
-            # isn't restricted to minor/OE like a true unplaced item.
             for a in group:
                 manual_review.append(_overflow_item(
                     a, _sessions_per_week(a),
@@ -768,17 +606,18 @@ def build_slots(assignments, occurrence_counts, adjacency_map,
         _place_group(
             group, classification, buckets, occurrence_counts,
             adjacency_map, skeleton_days_by_label, manual_review, rng,
-            faculty_violation_counts,
+            faculty_violation_counts, empty_locks,
         )
 
     lab_slots = _place_labs(
         lab_assignments, occurrence_counts, adjacency_map, manual_review, rng,
-        faculty_violation_counts,
+        faculty_violation_counts, empty_locks,
     )
 
     result = dict(buckets)
     for day, entries in lab_slots.items():
         if entries:
-            result[f"LAB_{day.upper()}"] = entries
+            result.setdefault(f"LAB_{day.upper()}", [])
+            result[f"LAB_{day.upper()}"].extend(entries)
 
-    return result, manual_review
+    return result, manual_review, lock_warnings

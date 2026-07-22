@@ -1,26 +1,4 @@
-// GeneratedTimetableTab.jsx
-//
-// CHANGED from the original:
-//   - New "Review" tab (ManualReviewPanel) with a pending-count badge, since
-//     overflow / choose_occurrences items now have nowhere else to be resolved.
-//   - Schedule save collapsed to a single saveSchedule(timetable_id, grid)
-//     call — no more separate "Save" vs "Save & Re-evaluate" (see EditToolbar).
-//   - Save warnings (adjacency/double-booking clashes introduced by a manual
-//     edit) are now displayed via EditToolbar's warnings prop.
-//
-// CHANGED (manual-review commit-to-grid model):
-//   - handleSwapCells / handleLabSwap now carry cell.manual_entries and
-//     cell.hidden_assignment_ids along with the swap. Previously only
-//     slot_name/slot_type/is_lab_anchor moved, so dragging a manually
-//     placed (overflow-resolved) cell in Schedule edit mode would strand
-//     its manual_entries at the OLD position and leave the destination
-//     cell showing nothing — a silent data loss on drag.
-//   - handleCellChange (the click-to-assign picker) now clears
-//     manual_entries/hidden_assignment_ids on the cell being reassigned.
-//     An explicit manual override through the picker should win outright
-//     over whatever a prior review resolution left there; leaving stale
-//     manual_entries behind after the admin picks a different label would
-//     make two different things "true" for the same cell at once.
+// frontend/src/components/incharge/academicSession/generatedTimetable/GeneratedTimetableTab.jsx
 import React, {
   useEffect,
   useState,
@@ -40,6 +18,7 @@ import {
   Save,
   ClipboardCheck,
 } from "lucide-react";
+import toast from "react-hot-toast"; // <-- added for notifications
 import useAdminStore from "../../../../store/admin/index";
 import useManualReviewStore from "../../../../store/useManualReviewStore";
 import ScoreBadge from "./ScoreBadge";
@@ -71,6 +50,15 @@ const GeneratedTimetableTab = ({ session }) => {
     scheduleError,
     slotsError,
     exportTimetableExcel,
+    // ---- NEW locks & regeneration ----
+    locksData,
+    fetchLocks,
+    lockCourseToSlot,
+    lockSlotEmpty,
+    deleteLock,
+    isSavingLock,
+    generateTimetable,
+    isGeneratingTimetable,
   } = useAdminStore();
 
   const { items: reviewItems, fetchPendingItems } = useManualReviewStore();
@@ -81,9 +69,6 @@ const GeneratedTimetableTab = ({ session }) => {
   const [localGrid, setLocalGrid] = useState(null);
   const [saveWarnings, setSaveWarnings] = useState([]);
 
-  // Ref onto EditableSlotsView's imperative API (save / cancel / isDirty),
-  // so this parent's toolbar can drive it instead of it running its own
-  // competing save UI.
   const slotsViewRef = useRef(null);
 
   const editMode =
@@ -103,6 +88,7 @@ const GeneratedTimetableTab = ({ session }) => {
     fetchGeneratedSlots(session._id);
     fetchActiveSchedule(session._id);
     fetchPendingItems(session._id);
+    fetchLocks(session._id); // <-- fetch locks on session change
   }, [session?._id, timetableData]);
 
   // ── tab switch cancels active edit ────────────────────────────────────────
@@ -166,10 +152,6 @@ const GeneratedTimetableTab = ({ session }) => {
         [s.slot_name, d.slot_name] = [d.slot_name, s.slot_name];
         [s.slot_type, d.slot_type] = [d.slot_type, s.slot_type];
         [s.is_lab_anchor, d.is_lab_anchor] = [d.is_lab_anchor, s.is_lab_anchor];
-        // NEW — manual-review data belongs to the CELL, not the label, so it
-        // has to travel with the swap just like slot_name does. Without
-        // this, a dragged manual placement gets left behind at the old
-        // position and the destination cell silently shows nothing.
         [s.manual_entries, d.manual_entries] = [
           d.manual_entries ?? [],
           s.manual_entries ?? [],
@@ -206,10 +188,6 @@ const GeneratedTimetableTab = ({ session }) => {
           sc.is_lab_anchor,
         ];
         [sc.lab_group, dc.lab_group] = [dc.lab_group, sc.lab_group];
-        // NEW — same rationale as handleSwapCells. Labs are never valid
-        // overflow/choose targets in practice, but if a review item ever
-        // did reference one, this keeps the swap correct rather than
-        // silently dropping the data.
         [sc.manual_entries, dc.manual_entries] = [
           dc.manual_entries ?? [],
           sc.manual_entries ?? [],
@@ -235,11 +213,6 @@ const GeneratedTimetableTab = ({ session }) => {
         cell.slot_name = slot_name ?? null;
         cell.slot_type = slot_type ?? "free";
         cell.is_lab_anchor = slot_type === "lab";
-        // NEW — an explicit reassignment through the picker supersedes
-        // whatever a prior manual-review resolution left on this cell.
-        // Leaving manual_entries/hidden_assignment_ids in place after the
-        // admin picks a different label would make the cell mean two
-        // contradictory things at once.
         cell.manual_entries = [];
         cell.hidden_assignment_ids = [];
         return next;
@@ -259,8 +232,6 @@ const GeneratedTimetableTab = ({ session }) => {
       setSaveWarnings(result.warnings ?? []);
       await fetchActiveSchedule(session._id);
       if (!result.warnings?.length) setScheduleEditMode(false);
-      // If there ARE warnings, stay in edit mode so the admin sees them
-      // against the grid they just edited, rather than silently exiting.
     }
   };
 
@@ -281,11 +252,24 @@ const GeneratedTimetableTab = ({ session }) => {
   };
 
   const handleReviewResolved = useCallback(() => {
-    // A resolved review item edits the saved grid server-side — refresh
-    // both so Schedule/Institute views reflect it immediately.
     fetchActiveSchedule(session._id);
     fetchGeneratedSlots(session._id);
   }, [fetchActiveSchedule, fetchGeneratedSlots, session?._id]);
+
+  // ---- NEW: regenerate timetable with locks ----
+  const handleRegenerateWithLocks = async () => {
+    try {
+      await generateTimetable(session._id);
+      await Promise.all([
+        fetchGeneratedSlots(session._id),
+        fetchActiveSchedule(session._id),
+        fetchLocks(session._id),
+      ]);
+      toast.success("Timetable regenerated with locks!");
+    } catch (error) {
+      toast.error(error.message || "Failed to regenerate");
+    }
+  };
 
   const isLoading = isFetchingSlots || isFetchingSchedule;
   const hasData = generatedSlotsData || activeScheduleData;
@@ -327,6 +311,12 @@ const GeneratedTimetableTab = ({ session }) => {
                 editMode={slotsEditMode}
                 sessionId={session._id}
                 onSlotsUpdated={handleSlotsUpdated}
+                // ---- NEW locks props ----
+                locksData={locksData}
+                fetchLocks={fetchLocks}
+                lockCourseToSlot={lockCourseToSlot}
+                lockSlotEmpty={lockSlotEmpty}
+                deleteLock={deleteLock}
               />
             ),
           }
@@ -337,7 +327,7 @@ const GeneratedTimetableTab = ({ session }) => {
         node: (
           <ManualReviewPanel
             session={session}
-            scheduleData={displayScheduleData} // NEW
+            scheduleData={displayScheduleData}
             slotsData={generatedSlotsData}
             onResolved={handleReviewResolved}
           />
@@ -367,6 +357,11 @@ const GeneratedTimetableTab = ({ session }) => {
     handleCellChange,
     handleSlotsUpdated,
     handleReviewResolved,
+    locksData,
+    fetchLocks,
+    lockCourseToSlot,
+    lockSlotEmpty,
+    deleteLock,
   ]);
 
   if (isLoading)
@@ -403,6 +398,22 @@ const GeneratedTimetableTab = ({ session }) => {
 
         <div className="flex items-center gap-1.5">
           {score != null && <ScoreBadge score={score} />}
+
+          {/* ---- NEW: Regenerate with Locks button (only in Slots tab) ---- */}
+          {activeTab === "slots" && (
+            <button
+              onClick={handleRegenerateWithLocks}
+              disabled={isGeneratingTimetable}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {isGeneratingTimetable ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <RefreshCw size={12} />
+              )}
+              Regenerate with Locks
+            </button>
+          )}
 
           {(activeTab === "schedule" || activeTab === "slots") && !editMode && (
             <button

@@ -11,6 +11,7 @@ import { createTimetableEngineSlice } from "./slices/timetableEngineSlice";
 import { createSlotsSlice } from "./slices/slotsSlice";
 import { createScheduleSlice } from "./slices/scheduleSlice";
 import { createSkeletonSlice } from "./slices/skeletonSlice";
+import { createLockSlice } from "./slices/lockSlice";
 
 // The public API is unchanged: useAdminStore() and
 // useAdminStore((s) => s.someField) both still work exactly as before.
@@ -29,6 +30,7 @@ const useAdminStore = create((set, get, api) => ({
   ...createSlotsSlice(set, get, api),
   ...createScheduleSlice(set, get, api),
   ...createSkeletonSlice(set, get, api),
+  ...createLockSlice(set, get, api),
 }));
 
 export default useAdminStore;

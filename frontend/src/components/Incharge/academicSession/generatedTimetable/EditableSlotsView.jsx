@@ -1,10 +1,12 @@
-// EditableSlotsView.jsx
+// frontend/src/components/incharge/academicSession/generatedTimetable/EditableSlotsView.jsx
+
 import React, {
   useMemo,
   useState,
   useCallback,
   forwardRef,
   useImperativeHandle,
+  useEffect,
 } from "react";
 import { SLOT_COLORS } from "./colors";
 import {
@@ -14,8 +16,11 @@ import {
   X,
   ChevronDown,
   AlertCircle,
+  Lock,
+  LockOpen,
 } from "lucide-react";
 import useAdminStore from "../../../../store/admin/index"; // ← adjust path to your store
+import { toast } from "react-toastify";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -91,9 +96,6 @@ const AddEntryModal = ({ onAdd, onClose }) => {
   const handleSubmit = () => {
     if (!courseCode.trim() || !facultyCode.trim()) return;
 
-    // onAdd returns false when the batch(es) already have a class in this
-    // slot — in that case we keep the modal open and show why, instead of
-    // silently closing on a rejected add.
     const ok = onAdd({
       course_code: courseCode.trim().toUpperCase(),
       faculty_code: facultyCode.trim().toUpperCase(),
@@ -219,7 +221,16 @@ const AddEntryModal = ({ onAdd, onClose }) => {
 // ── main component ────────────────────────────────────────────────────────────
 
 const EditableSlotsView = forwardRef(function EditableSlotsView(
-  { slotsData, editMode = false, sessionId },
+  {
+    slotsData,
+    editMode = false,
+    sessionId,
+    locksData = [],
+    fetchLocks,
+    lockCourseToSlot,
+    lockSlotEmpty,
+    deleteLock,
+  },
   ref,
 ) {
   // ── store ────────────────────────────────────────────────────────────────
@@ -232,35 +243,29 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
   const { slots: rawSlots } = slotsData;
 
   // Local optimistic copy — only lecture slots shown in this table.
-  // Edits (drag/drop, add entry, delete entry) stay local until the user
-  // hits "Save slots", which fires bulkUpdateSlots for all dirty slots.
   const [slots, setSlots] = useState(() =>
     rawSlots
       .filter((s) => !s.slot_name.startsWith("LAB"))
       .map((s) => ({ ...s, entries: [...(s.entries ?? [])] })),
   );
 
-  // Track which slot names have been added or deleted locally so we can
-  // route them to createSlot / deleteSlot on save instead of patchSlot.
-  const [addedSlots, setAddedSlots] = useState(new Set()); // slot_names pending createSlot
-  const [deletedSlots, setDeletedSlots] = useState(new Set()); // slot_names pending deleteSlot
+  // Track which slot names have been added or deleted locally.
+  const [addedSlots, setAddedSlots] = useState(new Set());
+  const [deletedSlots, setDeletedSlots] = useState(new Set());
 
   const [dragSource, setDragSource] = useState(null);
   const [dragOver, setDragOver] = useState(null);
-  const [addModal, setAddModal] = useState(null); // slotName
+  const [addModal, setAddModal] = useState(null);
   const [warnings, setWarnings] = useState([]);
-
-  // Surfaced when a drag/drop move or a manual "Add course" is rejected
-  // because it would double-book a batch in a slot.
   const [actionError, setActionError] = useState(null);
 
-  // isEditing tracks the parent's editMode prop directly. Cancel/Save/
-  // Save & Re-evaluate all live in the parent's toolbar; this
-  // component only needs to react to editMode, not manage its own copy.
+  // NEW: lock mode state
+  const [lockMode, setLockMode] = useState(false);
+
   const isEditing = editMode;
 
-  // Re-sync when slotsData changes externally (e.g. after a rework trigger).
-  React.useEffect(() => {
+  // Re-sync when slotsData changes externally.
+  useEffect(() => {
     setSlots(
       rawSlots
         .filter((s) => !s.slot_name.startsWith("LAB"))
@@ -270,7 +275,102 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
     setDeletedSlots(new Set());
     setWarnings([]);
     setActionError(null);
+    // Reset lock mode when data changes? Optional, but we keep it.
   }, [rawSlots]);
+
+  // Build batch name -> batch ID map from slots entries
+  const batchNameToId = useMemo(() => {
+    const map = new Map();
+    for (const sl of slots) {
+      for (const entry of sl.entries) {
+        const batchNames = entry.batch_names ?? entry.batches ?? [];
+        const batchIds = entry.batch_ids ?? [];
+        for (let i = 0; i < batchNames.length; i++) {
+          if (!map.has(batchNames[i])) {
+            map.set(batchNames[i], batchIds[i]);
+          }
+        }
+      }
+    }
+    return map;
+  }, [slots]);
+
+  // Build lock maps from locksData
+  const { courseLockMap, emptyLockMap } = useMemo(() => {
+    const courseMap = new Map(); // assignmentId -> { slotName, lockId }
+    const emptyMap = new Map(); // slotName -> Map(batchId -> lockId)
+
+    for (const lock of locksData) {
+      if (lock.lock_type === "course") {
+        const assignmentId = lock.assignment_id?._id ?? lock.assignment_id;
+        if (assignmentId) {
+          courseMap.set(assignmentId.toString(), {
+            slotName: lock.slot_name,
+            lockId: lock._id,
+          });
+        }
+      } else if (lock.lock_type === "empty") {
+        const slotName = lock.slot_name;
+        if (!emptyMap.has(slotName)) emptyMap.set(slotName, new Map());
+        const batchMap = emptyMap.get(slotName);
+        for (const batchId of lock.batch_ids ?? []) {
+          batchMap.set(batchId.toString(), lock._id);
+        }
+      }
+    }
+    return { courseLockMap: courseMap, emptyLockMap: emptyMap };
+  }, [locksData]);
+
+  // Toggle course lock
+  const toggleCourseLock = async (assignmentId, slotName) => {
+    const idStr = assignmentId.toString();
+    const existing = courseLockMap.get(idStr);
+    if (existing && existing.slotName === slotName) {
+      // Unlock
+      const result = await deleteLock(existing.lockId);
+      if (result.ok) {
+        toast.success("Lock removed");
+        await fetchLocks(sessionId);
+      } else {
+        toast.error(result.message || "Failed to remove lock");
+      }
+    } else {
+      // Lock (or relock to this slot)
+      const result = await lockCourseToSlot(sessionId, idStr, slotName);
+      if (result.ok) {
+        toast.success(`Locked assignment to slot ${slotName}`);
+        await fetchLocks(sessionId);
+      } else {
+        toast.error(result.message || "Failed to lock");
+      }
+    }
+  };
+
+  // Toggle empty lock
+  const toggleEmptyLock = async (batchId, slotName) => {
+    const batchIdStr = batchId.toString();
+    const batchMap = emptyLockMap.get(slotName);
+    const existingLockId = batchMap?.get(batchIdStr);
+    if (existingLockId) {
+      // Unlock empty
+      const result = await deleteLock(existingLockId);
+      if (result.ok) {
+        toast.success("Empty slot lock removed");
+        await fetchLocks(sessionId);
+      } else {
+        toast.error(result.message || "Failed to remove empty lock");
+      }
+    } else {
+      // Lock empty
+      const result = await lockSlotEmpty(sessionId, slotName, [batchIdStr]);
+      if (result.ok) {
+        toast.success(`Slot ${slotName} locked empty for this batch`);
+        await fetchLocks(sessionId);
+      } else {
+        toast.error(result.message || "Failed to lock empty");
+      }
+    }
+  };
 
   const allBatches = useMemo(() => {
     const seen = new Set();
@@ -300,16 +400,6 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
     setDragOver({ slotName });
   };
 
-  // Moving a course between slots is only ever safe in two situations:
-  //   1. The destination slot has no batch overlap with the entry being
-  //      moved at all → plain move.
-  //   2. The destination slot has exactly one entry, and it covers the
-  //      *exact same* batch(es) as the entry being moved → the two swap
-  //      places automatically (this is the "X goes to B, so Y comes back
-  //      to A" case).
-  // Anything else (partial batch overlap, multiple clashing entries) means
-  // a batch would end up double-booked or a batch's other slot would be
-  // left dangling, so the move is rejected with an explanation instead.
   const handleDrop = (e, targetSlotName) => {
     e.preventDefault();
     setDragOver(null);
@@ -326,16 +416,24 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
     const movingEntry = srcSlotObj.entries[entryIdx];
     if (!movingEntry) return;
 
+    // Check if the moving entry is locked – if so, prevent drag.
+    const assignmentId =
+      movingEntry.assignment_id?._id ?? movingEntry.assignment_id;
+    if (assignmentId) {
+      const lock = courseLockMap.get(assignmentId.toString());
+      if (lock && lock.slotName === srcSlot) {
+        setActionError("Cannot move a locked course");
+        return;
+      }
+    }
+
     const movingBatches = getBatches(movingEntry);
     const movingSet = new Set(movingBatches);
 
-    // Anything already in the target slot that shares a batch with the
-    // entry we're trying to move there.
     const conflicts = dstSlotObj.entries.filter((en) =>
       getBatches(en).some((batch) => movingSet.has(batch)),
     );
 
-    // Case 1: no shared batches at all — free move.
     if (conflicts.length === 0) {
       setSlots((prev) => {
         const next = prev.map((s) => ({ ...s, entries: [...s.entries] }));
@@ -351,8 +449,6 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
       return;
     }
 
-    // Case 2: exactly one clashing entry with the identical batch set —
-    // automatic interchange.
     if (conflicts.length === 1) {
       const conflictEntry = conflicts[0];
       const conflictBatches = getBatches(conflictEntry);
@@ -377,8 +473,6 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
       }
     }
 
-    // Case 3: partial overlap or multiple clashing entries — not a safe
-    // automatic move. Block it and say why.
     const clashBatches = movingBatches.filter((b) =>
       conflicts.some((en) => getBatches(en).includes(b)),
     );
@@ -407,8 +501,6 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
     setActionError(null);
   };
 
-  // Returns true on success, false if rejected due to a batch clash — the
-  // AddEntryModal uses this to decide whether to close itself.
   const handleAddEntry = (slotName, entry) => {
     const entryBatches = getBatches(entry);
     const slot = slots.find((s) => s.slot_name === slotName);
@@ -444,7 +536,6 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
       { slot_name: name, slot_type: "lecture", entries: [] },
     ]);
     setAddedSlots((prev) => new Set([...prev, name]));
-    // If this slot was previously queued for deletion (edge case), unmark it.
     setDeletedSlots((prev) => {
       const next = new Set(prev);
       next.delete(name);
@@ -455,7 +546,6 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
   const handleDeleteSlot = (slotName) => {
     setSlots((prev) => prev.filter((s) => s.slot_name !== slotName));
     if (addedSlots.has(slotName)) {
-      // Never persisted — just remove from the "to-create" set.
       setAddedSlots((prev) => {
         const next = new Set(prev);
         next.delete(slotName);
@@ -467,10 +557,7 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
   };
 
   // ── cancel ────────────────────────────────────────────────────────────────
-  //
-  // Discards every local edit (drag/drop moves, added/removed slots,
-  // added/removed entries) and restores the table to whatever slotsData
-  // (i.e. the last data fetched from the server) currently holds.
+
   const handleCancel = useCallback(() => {
     setSlots(
       rawSlots
@@ -487,26 +574,16 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
   }, [rawSlots]);
 
   // ── save ──────────────────────────────────────────────────────────────────
-  //
-  // Strategy:
-  //   1. DELETE slots that were removed locally.
-  //   2. CREATE slots that are brand-new.
-  //   3. PATCH (or bulk-update) every surviving slot whose entries may have changed.
-  //
-  // We use bulkUpdateSlots for step 3 to send a single round-trip instead of
-  // one patchSlot call per slot.
 
   const handleSave = async () => {
     setWarnings([]);
     const allWarnings = [];
 
-    // 1 — delete removed slots
     for (const slotName of deletedSlots) {
       const result = await deleteSlot(sessionId, slotName);
-      if (!result.ok) return { ok: false }; // store has set slotsError; bail out
+      if (!result.ok) return { ok: false };
     }
 
-    // 2 — create new slots (with their current entries)
     for (const slotName of addedSlots) {
       const sl = slots.find((s) => s.slot_name === slotName);
       if (!sl) continue;
@@ -519,7 +596,6 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
       if (result.warnings?.length) allWarnings.push(...result.warnings);
     }
 
-    // 3 — bulk-update all surviving (non-new) slots
     const survivingSlots = slots.filter((s) => !addedSlots.has(s.slot_name));
     if (survivingSlots.length) {
       const result = await bulkUpdateSlots(sessionId, survivingSlots);
@@ -527,16 +603,12 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
       if (result.warnings?.length) allWarnings.push(...result.warnings);
     }
 
-    // All good — clear pending sets and surface any warnings
     setAddedSlots(new Set());
     setDeletedSlots(new Set());
     if (allWarnings.length) setWarnings(allWarnings);
     return { ok: true, warnings: allWarnings };
   };
 
-  // Expose save + cancel + dirty-state to the parent so its toolbar (Cancel /
-  // Save / Save & Re-evaluate) can drive this component instead of it
-  // running its own competing save UI.
   useImperativeHandle(
     ref,
     () => ({
@@ -562,33 +634,141 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
 
   // ── render ────────────────────────────────────────────────────────────────
 
+  // Helper to render a single entry cell (used in batch rows)
+  const renderEntryCell = (sl, entry, entryIdx, batch) => {
+    const isLockedCourse = entry?.assignment_id
+      ? courseLockMap.get(entry.assignment_id.toString())?.slotName ===
+        sl.slot_name
+      : false;
+    const code = entry.course_code ?? entry.course ?? "—";
+    const fac = entry.faculty_code ?? entry.faculty ?? "";
+    const color = colorForSlot(sl.slot_name);
+    const isDragging =
+      dragSource?.slotName === sl.slot_name &&
+      dragSource?.entryIdx === entryIdx;
+    const isOver = dragOver?.slotName === sl.slot_name && isEditing;
+
+    const handleCellClick = () => {
+      if (!lockMode) return;
+      if (entry && entry.assignment_id) {
+        toggleCourseLock(entry.assignment_id, sl.slot_name);
+      } else {
+        toast.info("Cannot lock this entry (no assignment ID)");
+      }
+    };
+
+    return (
+      <td
+        key={sl.slot_name}
+        className={`px-1.5 py-1.5 border border-gray-200 dark:border-gray-800/60 transition-colors ${
+          isOver ? "bg-gray-50 dark:bg-gray-800/30" : ""
+        } ${lockMode ? "cursor-pointer" : ""}`}
+        onDragOver={
+          isEditing ? (e) => handleDragOver(e, sl.slot_name) : undefined
+        }
+        onDrop={isEditing ? (e) => handleDrop(e, sl.slot_name) : undefined}
+        onClick={handleCellClick}
+      >
+        <div
+          className={`rounded-lg px-2 py-1.5 text-center relative group ${
+            isLockedCourse
+              ? "bg-indigo-100 dark:bg-indigo-900/30 border-indigo-300 dark:border-indigo-600 text-indigo-800 dark:text-indigo-200"
+              : color
+          } ${isLockedCourse ? "ring-2 ring-indigo-400" : ""} ${
+            isDragging ? "opacity-30" : ""
+          } ${
+            isEditing && !isLockedCourse
+              ? "cursor-grab active:cursor-grabbing hover:brightness-95 dark:hover:brightness-110"
+              : ""
+          }`}
+          draggable={isEditing && !isLockedCourse}
+          onDragStart={
+            isEditing && !isLockedCourse
+              ? () => handleDragStart(sl.slot_name, entryIdx)
+              : undefined
+          }
+          onDragEnd={isEditing ? handleDragEnd : undefined}
+        >
+          {isEditing && !isLockedCourse && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDeleteEntry(sl.slot_name, entryIdx);
+              }}
+              className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-gray-400 dark:bg-gray-600 text-white flex items-center justify-center z-10 hover:bg-red-400 dark:hover:bg-red-400 transition-colors"
+              title="Remove entry"
+            >
+              <X size={8} />
+            </button>
+          )}
+          {isEditing && !isLockedCourse && (
+            <GripVertical
+              size={9}
+              className="absolute left-1 top-1/2 -translate-y-1/2 opacity-40 group-hover:opacity-70 transition-opacity"
+            />
+          )}
+          {isLockedCourse && (
+            <Lock
+              size={10}
+              className="absolute top-0.5 right-0.5 text-indigo-500 dark:text-indigo-400"
+            />
+          )}
+          <p className="text-[11px] font-semibold leading-none">{code}</p>
+          {fac && (
+            <p className="text-[9px] mt-0.5 opacity-60 leading-none">{fac}</p>
+          )}
+        </div>
+      </td>
+    );
+  };
+
   return (
     <div className="space-y-4">
-      {isEditing && (
-        <div className="flex items-center justify-between px-0.5">
-          <p className="text-[11px] text-gray-400 dark:text-gray-500">
-            Drag to move · <Plus size={9} className="inline -mt-px" /> to add ·{" "}
-            <X size={9} className="inline -mt-px" /> to remove
-          </p>
+      {/* Toolbar */}
+      <div className="flex items-center justify-between px-0.5">
+        <p className="text-[11px] text-gray-400 dark:text-gray-500">
+          {isEditing
+            ? lockMode
+              ? "Click a cell to toggle lock"
+              : "Drag to move · + to add · × to remove"
+            : lockMode
+              ? "Click a cell to toggle lock"
+              : "View mode"}
+        </p>
 
-          <div className="flex items-center gap-3">
-            {slotsError && (
-              <span className="text-[11px] text-red-500">{slotsError}</span>
-            )}
+        <div className="flex items-center gap-3">
+          {slotsError && (
+            <span className="text-[11px] text-red-500">{slotsError}</span>
+          )}
 
-            {actionError && (
-              <span className="flex items-center gap-1 text-[11px] text-red-500">
-                <AlertCircle size={11} />
-                {actionError}
-              </span>
-            )}
+          {actionError && (
+            <span className="flex items-center gap-1 text-[11px] text-red-500">
+              <AlertCircle size={11} />
+              {actionError}
+            </span>
+          )}
 
-            {warnings.map((w, i) => (
-              <span key={i} className="text-[11px] text-amber-500">
-                {w}
-              </span>
-            ))}
+          {warnings.map((w, i) => (
+            <span key={i} className="text-[11px] text-amber-500">
+              {w}
+            </span>
+          ))}
 
+          {/* Lock mode toggle */}
+          <button
+            onClick={() => setLockMode((prev) => !prev)}
+            className={`flex items-center gap-1 text-[12px] px-2.5 py-1.5 rounded-lg transition-colors ${
+              lockMode
+                ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300"
+                : "text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+            }`}
+            title={lockMode ? "Disable lock mode" : "Enable lock mode"}
+          >
+            {lockMode ? <Lock size={12} /> : <LockOpen size={12} />}
+            {lockMode ? "Lock mode" : "Lock mode"}
+          </button>
+
+          {isEditing && (
             <button
               onClick={handleAddSlot}
               disabled={isSavingSlots}
@@ -597,9 +777,9 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
               <Plus size={12} />
               Add slot
             </button>
-          </div>
+          )}
         </div>
-      )}
+      </div>
 
       <div className="rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden">
         <table
@@ -681,118 +861,78 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
           </thead>
 
           <tbody>
-            {allBatches.map((batch) => (
-              <tr
-                key={batch}
-                className="hover:bg-gray-50/60 dark:hover:bg-gray-800/20 transition-colors"
-              >
-                <td className="px-3 py-2.5 text-[12px] font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800/60 truncate">
-                  {batch}
-                </td>
-                {slots.map((sl) => {
-                  const entry = getEntry(sl.slot_name, batch);
-                  const entryIdx = sl.entries.findIndex((e) =>
-                    getBatches(e).includes(batch),
-                  );
-                  const isDragging =
-                    dragSource?.slotName === sl.slot_name &&
-                    dragSource?.entryIdx === entryIdx;
-                  const isOver =
-                    dragOver?.slotName === sl.slot_name && isEditing;
-
-                  if (!entry) {
-                    return (
-                      <td
-                        key={sl.slot_name}
-                        className={`px-3 py-2.5 text-center border border-gray-200 dark:border-gray-800/60 transition-colors ${
-                          isOver ? "bg-gray-50 dark:bg-gray-800/30" : ""
-                        }`}
-                        onDragOver={
-                          isEditing
-                            ? (e) => handleDragOver(e, sl.slot_name)
-                            : undefined
-                        }
-                        onDrop={
-                          isEditing
-                            ? (e) => handleDrop(e, sl.slot_name)
-                            : undefined
-                        }
-                      >
-                        <span className="text-[11px] text-gray-200 dark:text-gray-700">
-                          –
-                        </span>
-                      </td>
+            {allBatches.map((batch) => {
+              const batchId = batchNameToId.get(batch);
+              return (
+                <tr
+                  key={batch}
+                  className="hover:bg-gray-50/60 dark:hover:bg-gray-800/20 transition-colors"
+                >
+                  <td className="px-3 py-2.5 text-[12px] font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800/60 truncate">
+                    {batch}
+                  </td>
+                  {slots.map((sl) => {
+                    const entry = getEntry(sl.slot_name, batch);
+                    const entryIdx = sl.entries.findIndex((e) =>
+                      getBatches(e).includes(batch),
                     );
-                  }
 
-                  const code = entry.course_code ?? entry.course ?? "—";
-                  const fac = entry.faculty_code ?? entry.faculty ?? "";
-                  const color = colorForSlot(sl.slot_name);
+                    if (!entry) {
+                      // Empty cell – handle empty lock
+                      const isLockedEmpty = batchId
+                        ? emptyLockMap
+                            .get(sl.slot_name)
+                            ?.has(batchId.toString())
+                        : false;
+                      const isOver =
+                        dragOver?.slotName === sl.slot_name && isEditing;
 
-                  return (
-                    <td
-                      key={sl.slot_name}
-                      className={`px-1.5 py-1.5 border border-gray-200 dark:border-gray-800/60 transition-colors ${
-                        isOver ? "bg-gray-50 dark:bg-gray-800/30" : ""
-                      }`}
-                      onDragOver={
-                        isEditing
-                          ? (e) => handleDragOver(e, sl.slot_name)
-                          : undefined
-                      }
-                      onDrop={
-                        isEditing
-                          ? (e) => handleDrop(e, sl.slot_name)
-                          : undefined
-                      }
-                    >
-                      <div
-                        className={`rounded-lg px-2 py-1.5 text-center relative group ${color} ${
-                          isDragging ? "opacity-30" : ""
-                        } ${
-                          isEditing
-                            ? "cursor-grab active:cursor-grabbing hover:brightness-95 dark:hover:brightness-110"
-                            : ""
-                        }`}
-                        draggable={isEditing}
-                        onDragStart={
-                          isEditing
-                            ? () => handleDragStart(sl.slot_name, entryIdx)
-                            : undefined
+                      const handleEmptyClick = () => {
+                        if (!lockMode) return;
+                        if (batchId) {
+                          toggleEmptyLock(batchId, sl.slot_name);
+                        } else {
+                          toast.info("Cannot lock empty: missing batch ID");
                         }
-                        onDragEnd={isEditing ? handleDragEnd : undefined}
-                      >
-                        {isEditing && (
-                          <button
-                            onClick={() =>
-                              handleDeleteEntry(sl.slot_name, entryIdx)
-                            }
-                            className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-gray-400 dark:bg-gray-600 text-white flex items-center justify-center z-10 hover:bg-red-400 dark:hover:bg-red-400 transition-colors"
-                            title="Remove entry"
-                          >
-                            <X size={8} />
-                          </button>
-                        )}
-                        {isEditing && (
-                          <GripVertical
-                            size={9}
-                            className="absolute left-1 top-1/2 -translate-y-1/2 opacity-40 group-hover:opacity-70 transition-opacity"
-                          />
-                        )}
-                        <p className="text-[11px] font-semibold leading-none">
-                          {code}
-                        </p>
-                        {fac && (
-                          <p className="text-[9px] mt-0.5 opacity-60 leading-none">
-                            {fac}
-                          </p>
-                        )}
-                      </div>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
+                      };
+
+                      return (
+                        <td
+                          key={sl.slot_name}
+                          className={`px-3 py-2.5 text-center border border-gray-200 dark:border-gray-800/60 transition-colors ${
+                            isOver ? "bg-gray-50 dark:bg-gray-800/30" : ""
+                          } ${lockMode ? "cursor-pointer" : ""}`}
+                          onDragOver={
+                            isEditing
+                              ? (e) => handleDragOver(e, sl.slot_name)
+                              : undefined
+                          }
+                          onDrop={
+                            isEditing
+                              ? (e) => handleDrop(e, sl.slot_name)
+                              : undefined
+                          }
+                          onClick={handleEmptyClick}
+                        >
+                          <span className="text-[11px] text-gray-200 dark:text-gray-700 flex items-center justify-center gap-1">
+                            {isLockedEmpty ? (
+                              <Lock
+                                size={12}
+                                className="text-indigo-400 dark:text-indigo-300"
+                              />
+                            ) : (
+                              "–"
+                            )}
+                          </span>
+                        </td>
+                      );
+                    }
+
+                    return renderEntryCell(sl, entry, entryIdx, batch);
+                  })}
+                </tr>
+              );
+            })}
 
             {/* Unassigned entries (no batch) */}
             {slots.some((sl) =>
@@ -813,45 +953,95 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
                         className="border border-gray-200 dark:border-gray-800"
                       />
                     );
-                  return (
-                    <td
-                      key={sl.slot_name}
-                      className="px-1.5 py-1.5 border border-gray-200 dark:border-gray-800"
-                    >
-                      {unassigned.map((e, i) => {
-                        const realIdx = sl.entries.indexOf(e);
-                        return (
-                          <div
-                            key={i}
-                            className={`rounded-lg px-2 py-1.5 text-center relative group mb-1 ${colorForSlot(sl.slot_name)} ${
-                              isEditing ? "cursor-grab" : ""
-                            }`}
-                            draggable={isEditing}
-                            onDragStart={
-                              isEditing
-                                ? () => handleDragStart(sl.slot_name, realIdx)
-                                : undefined
-                            }
-                            onDragEnd={isEditing ? handleDragEnd : undefined}
-                          >
-                            {isEditing && (
-                              <button
-                                onClick={() =>
-                                  handleDeleteEntry(sl.slot_name, realIdx)
-                                }
-                                className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-gray-400 dark:bg-gray-600 text-white flex items-center justify-center z-10 hover:bg-red-400 transition-colors"
-                              >
-                                <X size={8} />
-                              </button>
-                            )}
-                            <p className="text-[11px] font-semibold leading-none">
-                              {e.course_code ?? e.course ?? "—"}
+                  // For unassigned, we just render them (no lock support)
+                  return unassigned.map((e, i) => {
+                    const realIdx = sl.entries.indexOf(e);
+                    const isLockedCourse = e?.assignment_id
+                      ? courseLockMap.get(e.assignment_id.toString())
+                          ?.slotName === sl.slot_name
+                      : false;
+                    const isDragging =
+                      dragSource?.slotName === sl.slot_name &&
+                      dragSource?.entryIdx === realIdx;
+                    const isOver =
+                      dragOver?.slotName === sl.slot_name && isEditing;
+
+                    return (
+                      <td
+                        key={`${sl.slot_name}-${i}`}
+                        className={`px-1.5 py-1.5 border border-gray-200 dark:border-gray-800/60 transition-colors ${
+                          isOver ? "bg-gray-50 dark:bg-gray-800/30" : ""
+                        } ${lockMode ? "cursor-pointer" : ""}`}
+                        onDragOver={
+                          isEditing
+                            ? (e) => handleDragOver(e, sl.slot_name)
+                            : undefined
+                        }
+                        onDrop={
+                          isEditing
+                            ? (e) => handleDrop(e, sl.slot_name)
+                            : undefined
+                        }
+                        onClick={() => {
+                          if (!lockMode) return;
+                          if (e.assignment_id) {
+                            toggleCourseLock(e.assignment_id, sl.slot_name);
+                          } else {
+                            toast.info(
+                              "Cannot lock this entry (no assignment ID)",
+                            );
+                          }
+                        }}
+                      >
+                        <div
+                          className={`rounded-lg px-2 py-1.5 text-center relative group ${
+                            isLockedCourse
+                              ? "bg-indigo-100 dark:bg-indigo-900/30 border-indigo-300 dark:border-indigo-600 text-indigo-800 dark:text-indigo-200"
+                              : colorForSlot(sl.slot_name)
+                          } ${isLockedCourse ? "ring-2 ring-indigo-400" : ""} ${
+                            isDragging ? "opacity-30" : ""
+                          } ${
+                            isEditing && !isLockedCourse
+                              ? "cursor-grab active:cursor-grabbing"
+                              : ""
+                          }`}
+                          draggable={isEditing && !isLockedCourse}
+                          onDragStart={
+                            isEditing && !isLockedCourse
+                              ? () => handleDragStart(sl.slot_name, realIdx)
+                              : undefined
+                          }
+                          onDragEnd={isEditing ? handleDragEnd : undefined}
+                        >
+                          {isEditing && !isLockedCourse && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteEntry(sl.slot_name, realIdx);
+                              }}
+                              className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-gray-400 dark:bg-gray-600 text-white flex items-center justify-center z-10 hover:bg-red-400 transition-colors"
+                            >
+                              <X size={8} />
+                            </button>
+                          )}
+                          {isLockedCourse && (
+                            <Lock
+                              size={10}
+                              className="absolute top-0.5 right-0.5 text-indigo-500 dark:text-indigo-400"
+                            />
+                          )}
+                          <p className="text-[11px] font-semibold leading-none">
+                            {e.course_code ?? e.course ?? "—"}
+                          </p>
+                          {e.faculty_code && (
+                            <p className="text-[9px] mt-0.5 opacity-60 leading-none">
+                              {e.faculty_code}
                             </p>
-                          </div>
-                        );
-                      })}
-                    </td>
-                  );
+                          )}
+                        </div>
+                      </td>
+                    );
+                  });
                 })}
               </tr>
             )}

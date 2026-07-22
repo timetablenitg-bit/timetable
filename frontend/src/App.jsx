@@ -62,6 +62,7 @@ const App = () => {
             }
           />
           <Route path="/doc" element={<Documentation />} />
+
           {/* <Route
             path="/signup"
             element={
@@ -69,12 +70,13 @@ const App = () => {
                 <Signup />
               </PublicRoute>
             }
-          />
+          /> */}
+
           <Route path="/accept-invite" element={<AcceptInvite />} />
 
           {/* --- Protected Routes --- */}
 
-          {/* Student Portal - Only 'student' tag can access */}
+          {/* Student Portal - Only 'student' tag can access
           <Route
             path="/student"
             element={

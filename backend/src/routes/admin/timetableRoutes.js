@@ -75,4 +75,18 @@ router.delete("/slots/:session_id/:slot_name", deleteSlot);
 // router.patch("/schedule/:timetable_id/batch-cell", editBatchCell);
 router.patch("/schedule/:timetable_id/batch-week", saveBatchWeek);
 
+import {
+  getLocks,
+  lockCourseToSlot,
+  lockSlotEmpty,
+  deleteLock,
+  clearLocks,
+} from "../../controllers/admin/slotLockController.js";
+
+router.get("/locks", getLocks);
+router.post("/locks/course", lockCourseToSlot);
+router.post("/locks/empty", lockSlotEmpty);
+router.delete("/locks/:lock_id", deleteLock);
+router.delete("/locks", clearLocks);
+
 export default router;

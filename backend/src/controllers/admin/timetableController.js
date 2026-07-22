@@ -1,9 +1,24 @@
 // controllers/timetableController.js
 //
-// Consolidated from the old duplicate timetableController.js /
-// engineController.js (they were identical). Handles generation and
-// read endpoints. Rework/save-edit endpoints live in
-// scheduleEditController.js. Track toggling lives in trackController.js.
+// CHANGES FOR SLOT LOCKING (v3):
+//   * generateTimetable now loads every SlotLock for the session and
+//     converts them into the {course: {assignment_id: slot_name}, empty:
+//     {slot_name: [batch_id,...]}} shape slot_generator.py v8 expects, and
+//     threads it through the engine payload as `locks`.
+//   * Locks are NOT cleared after generation — they're meant to persist
+//     across repeated regenerations until the admin explicitly removes them
+//     (see slotLockController.js).
+//   * The engine's `lock_warnings` (non-fatal clash notices for forced
+//     placements) are surfaced in the response alongside the existing
+//     manual_review_count, so the admin can see if a lock landed on top of
+//     something.
+//
+// NOTE: this assumes engine.py's run(data) reads data["locks"] and passes it
+// through to slot_generator.build_slots(..., locks=data.get("locks")), and
+// that run() includes whatever build_slots returns as result["lock_warnings"]
+// in its output dict. I don't have engine.py's source, so this one wire-up
+// needs a matching one-line change on your end — everything else here is
+// self-contained.
 
 import mongoose from "mongoose";
 import { CourseAssignment } from "../../models/courseAssignmentModel.js";
@@ -11,6 +26,7 @@ import { TimetableSchedule } from "../../models/timetableScheduleModel.js";
 import { GeneratedSlot } from "../../models/generatedSlotModel.js";
 import { TimetableSkeleton } from "../../models/timetableSkeletonModel.js";
 import { ManualReviewItem } from "../../models/manualReviewModel.js";
+import { SlotLock } from "../../models/slotLockModel.js";
 import { runTimetableEngine } from "../../engine/bridge/timetableEngine.js";
 import { buildDefaultSkeletonCells } from "../../utils/defaultSkeletonCells.js";
 import {
@@ -96,6 +112,26 @@ async function getActiveSkeletonOrSeed(session_id) {
   return skeleton;
 }
 
+// NEW — loads every SlotLock for the session and reshapes it into the
+// {course: {...}, empty: {...}} payload slot_generator.py v8 consumes.
+async function buildLocksPayload(session_id) {
+  const locks = await SlotLock.find({ session_id }).lean();
+
+  const course = {};
+  const empty = {};
+
+  for (const l of locks) {
+    if (l.lock_type === "course" && l.assignment_id) {
+      course[String(l.assignment_id)] = l.slot_name;
+    } else if (l.lock_type === "empty") {
+      empty[l.slot_name] = empty[l.slot_name] ?? [];
+      empty[l.slot_name].push(...l.batch_ids.map(String));
+    }
+  }
+
+  return { course, empty };
+}
+
 // ── POST /api/v1/admin/timetable/generate ───────────────────────────────────
 
 export const generateTimetable = async (req, res) => {
@@ -118,15 +154,21 @@ export const generateTimetable = async (req, res) => {
     const adjacency_map = serializeAdjacencyMap(getAdjacencyMap(skeleton));
     const skeleton_days_by_label = getSkeletonDaysByLabel(skeleton);
 
+    // NEW — admin locks, applied by the engine before its normal placement
+    // pass. See slot_generator.py v8 for how "course" and "empty" locks are
+    // honored.
+    const locks = await buildLocksPayload(session_id);
+
     const result = await runTimetableEngine({
       assignments,
       skeleton_cells: skeleton.cells,
       occurrence_counts,
       adjacency_map,
       skeleton_days_by_label,
+      locks,
     });
     // result = { slots, timetable, score, manual_review_items,
-    //            suggested_track_assignments, meta }
+    //            suggested_track_assignments, lock_warnings, meta }
 
     const generation_id = new mongoose.Types.ObjectId();
 
@@ -191,6 +233,9 @@ export const generateTimetable = async (req, res) => {
         slots: result.slots,
         manual_review_count: reviewDocs.length,
         suggested_track_assignments: result.suggested_track_assignments ?? [],
+        // NEW — non-fatal notices when a lock landed on top of a clash.
+        // Never blocks generation; purely informational for the admin.
+        lock_warnings: result.lock_warnings ?? [],
         meta: result.meta,
       },
     });
