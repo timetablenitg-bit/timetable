@@ -108,6 +108,8 @@ const timetableScheduleSchema = new mongoose.Schema(
 
     score: { type: Number, required: true },
     is_active: { type: Boolean, default: false },
+    is_published: { type: Boolean, default: false },
+    published_at: { type: Date, default: null },
 
     // Flat list of ALL cells (both tracks, all days).
     grid: [gridCellSchema],
@@ -131,6 +133,11 @@ const timetableScheduleSchema = new mongoose.Schema(
 timetableScheduleSchema.index(
   { session_id: 1, is_active: 1 },
   { unique: true, partialFilterExpression: { is_active: true } },
+);
+
+timetableScheduleSchema.index(
+  { session_id: 1, is_published: 1 },
+  { unique: true, partialFilterExpression: { is_published: true } },
 );
 
 export const TimetableSchedule = mongoose.model(

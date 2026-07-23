@@ -17,6 +17,7 @@ import {
   Info,
   Save,
   ClipboardCheck,
+  UploadCloud,
 } from "lucide-react";
 import toast from "react-hot-toast"; // <-- added for notifications
 import useAdminStore from "../../../../store/admin/index";
@@ -58,6 +59,8 @@ const GeneratedTimetableTab = ({ session }) => {
     deleteLock,
     isSavingLock,
     generateTimetable,
+    publishSchedule,
+    isPublishingSchedule,
     isGeneratingTimetable,
   } = useAdminStore();
 
@@ -68,6 +71,19 @@ const GeneratedTimetableTab = ({ session }) => {
   const [slotsEditMode, setSlotsEditMode] = useState(false);
   const [localGrid, setLocalGrid] = useState(null);
   const [saveWarnings, setSaveWarnings] = useState([]);
+  const [showPublishConfirm, setShowPublishConfirm] = useState(false);
+
+  // publishSchedule now toggles: it publishes if not published, or
+  // unpublishes if already published — same endpoint, same handler.
+  const isPublished = !!activeScheduleData?.is_published;
+
+  const handlePublish = async () => {
+    if (!activeScheduleData?.timetable_id) return;
+    const result = await publishSchedule(activeScheduleData.timetable_id);
+    setShowPublishConfirm(false);
+    if (result.ok) toast.success(result.message || "Done");
+    else toast.error(result.message);
+  };
 
   const slotsViewRef = useRef(null);
 
@@ -434,6 +450,76 @@ const GeneratedTimetableTab = ({ session }) => {
               {activeTab === "slots" ? "Edit slots" : "Edit"}
             </button>
           )}
+
+          {/* Publish / Unpublish — single toggle button + confirm popover */}
+          <div className="relative">
+            <button
+              onClick={() => setShowPublishConfirm((v) => !v)}
+              disabled={
+                !activeScheduleData?.timetable_id || isPublishingSchedule
+              }
+              title={
+                isPublished
+                  ? "Unpublish (hide from students & faculty)"
+                  : "Publish to students & faculty"
+              }
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                isPublished
+                  ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-700"
+                  : "bg-indigo-500 hover:bg-indigo-600 text-white"
+              }`}
+            >
+              {isPublishingSchedule ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <UploadCloud size={12} />
+              )}
+              {isPublished ? "Published" : "Publish"}
+            </button>
+
+            {showPublishConfirm && (
+              <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 p-4 z-20 space-y-3">
+                <div className="flex items-start gap-2">
+                  <UploadCloud
+                    size={16}
+                    className={`shrink-0 mt-0.5 ${
+                      isPublished ? "text-red-500" : "text-indigo-500"
+                    }`}
+                  />
+                  <p className="text-xs text-gray-600 dark:text-gray-300">
+                    {isPublished
+                      ? "This will unpublish the timetable, hiding it from students and faculty."
+                      : "This will make the current schedule visible to students and faculty on their portals."}
+                  </p>
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <button
+                    onClick={() => setShowPublishConfirm(false)}
+                    className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handlePublish}
+                    disabled={isPublishingSchedule}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg text-white disabled:opacity-60 ${
+                      isPublished
+                        ? "bg-red-500 hover:bg-red-600"
+                        : "bg-indigo-500 hover:bg-indigo-600"
+                    }`}
+                  >
+                    {isPublishingSchedule
+                      ? isPublished
+                        ? "Unpublishing…"
+                        : "Publishing…"
+                      : isPublished
+                        ? "Yes, unpublish"
+                        : "Yes, publish"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
           <button
             onClick={handleExportExcel}

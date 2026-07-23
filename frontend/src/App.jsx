@@ -76,7 +76,7 @@ const App = () => {
 
           {/* --- Protected Routes --- */}
 
-          {/* Student Portal - Only 'student' tag can access
+          {/* Student Portal - Only 'student' tag can access */}
           <Route
             path="/student"
             element={

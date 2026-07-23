@@ -159,6 +159,8 @@ export const API_PATHS = {
     DELETE_LOCK: (lock_id) => `/api/v1/admin/timetable/engine/locks/${lock_id}`,
     CLEAR_LOCKS: (session_id) =>
       `/api/v1/admin/timetable/engine/locks?session_id=${session_id}`,
+    PUBLISH_SCHEDULE: (timetable_id) =>
+      `/api/v1/admin/timetable/engine/schedule/${timetable_id}/publish`,
   },
 
   STUDENT: {

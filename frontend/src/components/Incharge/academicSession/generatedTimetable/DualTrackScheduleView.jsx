@@ -18,6 +18,16 @@
 // edit can never silently strand or corrupt a placement the admin made via
 // Manual Review. It gets a small grey dot + tooltip pointing at Review/
 // Institute instead.
+//
+// CHANGED (dual-track detection fix): whether a day has a second track is a
+// SKELETON fact (does grid[day].track2 exist at all), never something the
+// engine's actual placement should decide. Previously `hasDualTrack` also
+// required a lab block to be present in the AM slot (`!!t2AmLab`), so a
+// Monday with a structurally-defined track 2 but no lab placed in it would
+// silently render as single-track — hiding the "2 tracks" label and the
+// entire second row even though the skeleton says it exists. Track display
+// must reflect the skeleton, not engine placement (see
+// utils/resolveBatchTrack.js and models/timetableScheduleModel.js).
 import React, { useState, useCallback, useRef } from "react";
 import { FlaskConical, Clock, Zap, X, GripVertical } from "lucide-react";
 import {
@@ -432,7 +442,14 @@ const DualTrackScheduleView = ({
                 : {};
               const t1PmLab = getLabBlock(t1Map, PM_LAB_BLOCK);
               const t2AmLab = getLabBlock(t2Map, AM_LAB_BLOCK);
-              const hasDualTrack = !!t2Cells && !!t2AmLab;
+
+              // FIXED — this is a skeleton fact (does this day HAVE a track
+              //2 row at all), not something engine placement should gate.
+              // Previously `!!t2AmLab` was ANDed in here, so a day with a
+              // structurally-defined track2 but no lab actually placed in
+              // the AM block would render as single-track, hiding the
+              // "2 tracks" label and the whole second row.
+              const hasDualTrack = !!t2Cells && t2Cells.length > 0;
 
               return (
                 <React.Fragment key={day}>
@@ -477,10 +494,25 @@ const DualTrackScheduleView = ({
                         )}
                   </tr>
 
-                  {/* Track 2 — subtle accent, no heavy wash */}
+                  {/* Track 2 — subtle accent, no heavy wash.
+                      FIXED — rendered whenever the skeleton has a track2 row
+                      (hasDualTrack), regardless of whether a lab happens to
+                      be placed in the AM block. If there's no lab entry,
+                      the AM block just falls back to plain theory cells
+                      instead of the row vanishing entirely. */}
                   {hasDualTrack && (
                     <tr className="border-t border-dashed border-gray-200 dark:border-gray-700">
-                      {renderLabCell(t2AmLab, slotsData, "9:00–12:00", day, 2)}
+                      {t2AmLab
+                        ? renderLabCell(
+                            t2AmLab,
+                            slotsData,
+                            "9:00–12:00",
+                            day,
+                            2,
+                          )
+                        : AM_LAB_BLOCK.map((pi) =>
+                            renderTheoryCell(t2Map[pi], day, 2),
+                          )}
                       {renderTheoryCell(t2Map[3], day, 2)}
                       {AFTER_LUNCH.map((pi) =>
                         renderTheoryCell(t2Map[pi], day, 2),

@@ -14,6 +14,7 @@ export const createScheduleSlice = (set, get) => ({
   scheduleWarnings: [],
   isFetchingAvailability: false,
   availabilityError: null,
+  isPublishingSchedule: false,
 
   saveSchedule: async (timetable_id, gridObj) => {
     set({ isSavingSchedule: true, scheduleError: null });
@@ -101,6 +102,28 @@ export const createScheduleSlice = (set, get) => ({
       const message =
         error.response?.data?.message || "Failed to save timetable changes";
       set({ batchCellError: message, isSavingBatchWeek: false });
+      return { ok: false, message };
+    }
+  },
+
+  publishSchedule: async (timetable_id) => {
+    set({ isPublishingSchedule: true, scheduleError: null });
+    try {
+      const response = await axiosInstance.patch(
+        API_PATHS.TIMETABLE.PUBLISH_SCHEDULE(timetable_id),
+      );
+      const { is_published, published_at } = response.data.data;
+      set((state) => ({
+        activeScheduleData: state.activeScheduleData
+          ? { ...state.activeScheduleData, is_published, published_at }
+          : state.activeScheduleData,
+        isPublishingSchedule: false,
+      }));
+      return { ok: true, message: response.data.message };
+    } catch (error) {
+      const message =
+        error.response?.data?.message || "Failed to publish timetable";
+      set({ scheduleError: message, isPublishingSchedule: false });
       return { ok: false, message };
     }
   },

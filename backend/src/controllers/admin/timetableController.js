@@ -276,6 +276,8 @@ export const getActiveSchedule = async (req, res) => {
         score: schedule.score,
         meta: schedule.meta,
         generated_at: schedule.createdAt,
+        is_published: schedule.is_published, // add
+        published_at: schedule.published_at, // add
         track_assignments: schedule.track_assignments ?? [],
         suggested_track_assignments: schedule.suggested_track_assignments ?? [],
         grid: groupGrid(schedule.grid),
@@ -329,5 +331,62 @@ export const getGeneratedSlots = async (req, res) => {
   } catch (error) {
     console.error("Fetch slots error:", error);
     res.status(500).json({ success: false, message: "Failed to fetch slots" });
+  }
+};
+
+export const publishSchedule = async (req, res) => {
+  try {
+    const { timetable_id } = req.params;
+
+    const schedule = await TimetableSchedule.findById(timetable_id);
+    if (!schedule) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Timetable not found" });
+    }
+
+    // Toggle: if this schedule is already the published one, unpublish it.
+    if (schedule.is_published) {
+      schedule.is_published = false;
+      schedule.published_at = null;
+      await schedule.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Timetable unpublished — hidden from students and faculty.",
+        data: {
+          timetable_id: schedule._id,
+          is_published: false,
+          published_at: null,
+        },
+      });
+    }
+
+    // Otherwise, publish this one and unpublish any other published
+    // schedule for the same session (only one can be live at a time).
+    await TimetableSchedule.updateMany(
+      { session_id: schedule.session_id, is_published: true },
+      { is_published: false, published_at: null },
+    );
+
+    schedule.is_published = true;
+    schedule.published_at = new Date();
+    await schedule.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Timetable published — now visible to students and faculty.",
+      data: {
+        timetable_id: schedule._id,
+        is_published: true,
+        published_at: schedule.published_at,
+      },
+    });
+  } catch (error) {
+    console.error("[publishSchedule]", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to publish/unpublish timetable",
+    });
   }
 };

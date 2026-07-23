@@ -44,46 +44,36 @@ const DEPT_COLOR = "FF0070C0";
 const SEM_ORDER = ["IV", "VI", "VIII", "MTech-II", "MTech-IV"];
 
 // ── Batch name normalizer ─────────────────────────────────────────────────────
-// Converts "CSE 4th Sem" → "CSE-IV"
-// Converts "1st Sem Sec A" → "1stYear-A"
-// Passes through already-normalized names like "CSE-IV-A"
-const SEM_WORD_TO_ROMAN = {
-  "1st": "I",
-  "2nd": "II",
-  "3rd": "III",
-  "4th": "IV",
-  "5th": "V",
-  "6th": "VI",
-  "7th": "VII",
-  "8th": "VIII",
-};
+function isFirstYearName(raw) {
+  if (!raw) return false;
+  return /1st.?year|first.?year|\bfy\b|(1st|2nd)\s*sem\s*sec/i.test(raw);
+}
 
 function normalizeBatchName(name) {
   if (!name) return name;
   name = name.trim();
-
-  // Already normalized e.g. "CSE-IV-A" or "1stYear-A"
-  if (name.includes("-")) return name;
-
-  const lower = name.toLowerCase();
-
-  // "1st Sem Sec A" or "1st Year Sec A" → "1stYear-A"
-  if (lower.includes("1st sem sec") || lower.includes("1st year")) {
-    const section = name.trim().split(/\s+/).pop();
+  if (isFirstYearName(name)) {
+    const match = name.match(/([A-Za-z])\s*$/);
+    const section = match ? match[1].toUpperCase() : name;
     return `1stYear-${section}`;
   }
-
-  // "CSE 4th Sem" → "CSE-IV"
-  // "CSE 4th Sem A" → "CSE-IV-A"
+  if (name.includes("-")) return name;
   const parts = name.split(/\s+/);
   const dept = parts[0];
   const semWord = (parts[1] ?? "").toLowerCase();
+  const SEM_WORD_TO_ROMAN = {
+    "1st": "I",
+    "2nd": "II",
+    "3rd": "III",
+    "4th": "IV",
+    "5th": "V",
+    "6th": "VI",
+    "7th": "VII",
+    "8th": "VIII",
+  };
   const semRoman = SEM_WORD_TO_ROMAN[semWord] ?? parts[1];
-
-  // If last token looks like a section letter (single uppercase letter)
   const lastPart = parts[parts.length - 1];
   const hasSection = parts.length > 3 && /^[A-Z]$/.test(lastPart);
-
   return hasSection ? `${dept}-${semRoman}-${lastPart}` : `${dept}-${semRoman}`;
 }
 
@@ -129,15 +119,15 @@ function getLabBlock(trackMap, block) {
   return null;
 }
 
-// ── Batch name parsing (expects normalized name) ──────────────────────────────
+// ── Batch name parsing ──────────────────────────────────────────────────────
 function parseBatch(name) {
   if (!name) return { dept: name, sem: "", section: "", is1stYear: false };
-  const parts = name.split("-");
-  const firstYearAliases = ["1styear", "firstyear", "fy", "1yr", "1year"];
-  if (firstYearAliases.includes((parts[0] ?? "").toLowerCase())) {
+  if (isFirstYearName(name)) {
+    const parts = name.split("-");
     const section = parts[parts.length - 1] ?? "";
     return { dept: "1st Year", sem: section, section, is1stYear: true };
   }
+  const parts = name.split("-");
   return {
     dept: parts[0] ?? name,
     sem: parts[1] ?? "",
@@ -153,6 +143,20 @@ function getFillForRow(sem, is1stYear, section) {
   return SEM_FILL[sem] ?? "FFFFFFFF";
 }
 
+// ── Track resolution ──────────────────────────────────────────────────────────
+function resolveTrackForBatch(schedule, day, batchId) {
+  if (!batchId) return 1;
+  const explicit = (schedule.track_assignments ?? []).find(
+    (t) => t.day === day && String(t.batch_id) === String(batchId),
+  );
+  if (explicit) return explicit.track;
+  const suggested = (schedule.suggested_track_assignments ?? []).find(
+    (t) => t.day === day && String(t.batch_id) === String(batchId),
+  );
+  if (suggested) return suggested.track;
+  return 1;
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
 export const generateTimetableExcel = async (generation_id) => {
   const schedule = await TimetableSchedule.findOne({ generation_id });
@@ -164,12 +168,32 @@ export const generateTimetableExcel = async (generation_id) => {
   const slotMap = {};
   for (const s of generatedSlots) slotMap[s.slot_name] = s.entries;
 
-  const track2Set = new Set(schedule.track2_batches ?? []);
+  // ── normalizedBatchName → batch_id ─────────────────────────────────────────
+  const batchIdMap = {};
+  const harvestBatchIds = (entries = []) => {
+    for (const e of entries) {
+      const names = e.batch_names ?? [];
+      const ids = e.batch_ids ?? [];
+      names.forEach((raw, idx) => {
+        const norm = normalizeBatchName(raw);
+        if (!batchIdMap[norm] && ids[idx]) batchIdMap[norm] = ids[idx];
+      });
+    }
+  };
+  for (const slot of generatedSlots) harvestBatchIds(slot.entries);
+  for (const cell of schedule.grid ?? []) harvestBatchIds(cell.manual_entries);
 
   // ── Collect all batches and normalize names ───────────────────────────────
   const batchSet = new Set();
   for (const slot of generatedSlots) {
     for (const e of slot.entries) {
+      for (const b of e.batch_names ?? []) {
+        batchSet.add(normalizeBatchName(b));
+      }
+    }
+  }
+  for (const cell of schedule.grid ?? []) {
+    for (const e of cell.manual_entries ?? []) {
       for (const b of e.batch_names ?? []) {
         batchSet.add(normalizeBatchName(b));
       }
@@ -246,11 +270,23 @@ export const generateTimetableExcel = async (generation_id) => {
         .map((c) => [c.period_index, c]),
     );
 
-  // getEntry: match normalized batch name against stored (raw) batch_names
-  const getEntry = (slotName, normalizedBatch) => {
+  const findEntryInSlot = (slotName, normalizedBatch, hiddenIds) => {
     if (!slotName || slotName === "BREAK") return null;
     return (
-      (slotMap[slotName] ?? []).find((e) =>
+      (slotMap[slotName] ?? []).find((e) => {
+        if (e.assignment_id && hiddenIds.has(String(e.assignment_id)))
+          return false;
+        return (e.batch_names ?? []).some(
+          (b) => normalizeBatchName(b) === normalizedBatch,
+        );
+      }) ?? null
+    );
+  };
+
+  const findManualEntry = (gridCell, normalizedBatch) => {
+    if (!gridCell) return null;
+    return (
+      (gridCell.manual_entries ?? []).find((e) =>
         (e.batch_names ?? []).some(
           (b) => normalizeBatchName(b) === normalizedBatch,
         ),
@@ -258,21 +294,32 @@ export const generateTimetableExcel = async (generation_id) => {
     );
   };
 
-  const getCellText = (batches, t1Map, t2Map, t1PmLab, t2AmLab, pi) => {
+  const getCellText = (day, batches, t1Map, t2Map, t1PmLab, t2AmLab, pi) => {
     const lines = [];
     for (const batch of batches) {
-      // batch is already normalized here
-      const bIsT2 = track2Set.has(batch) && !!t2AmLab;
+      const batchId = batchIdMap[batch];
+      const bIsT2 = resolveTrackForBatch(schedule, day, batchId) === 2;
       const map = bIsT2 ? t2Map : t1Map;
       const bAmLab = bIsT2 ? t2AmLab : null;
       const bPmLab = bIsT2 ? null : t1PmLab;
       const { section } = parseBatch(batch);
       const prefix = section ? `[${section}] ` : "";
 
-      if (bAmLab && AM_LAB_BLOCK.includes(pi)) {
-        const le = (slotMap[bAmLab] ?? []).find((e) =>
-          (e.batch_names ?? []).some((b) => normalizeBatchName(b) === batch),
+      const gridCell = map[pi] ?? null;
+      const hiddenIds = new Set(
+        (gridCell?.hidden_assignment_ids ?? []).map(String),
+      );
+
+      const manual = findManualEntry(gridCell, batch);
+      if (manual) {
+        lines.push(
+          `${prefix}${manual.course_code ?? "—"}: ${manual.faculty_code ?? ""}`,
         );
+        continue;
+      }
+
+      if (bAmLab && AM_LAB_BLOCK.includes(pi)) {
+        const le = findEntryInSlot(bAmLab, batch, hiddenIds);
         if (le)
           lines.push(
             `${prefix}${le.course_code ?? bAmLab}: ${le.faculty_code ?? ""}`,
@@ -280,9 +327,7 @@ export const generateTimetableExcel = async (generation_id) => {
         continue;
       }
       if (bPmLab && PM_LAB_BLOCK.includes(pi)) {
-        const le = (slotMap[bPmLab] ?? []).find((e) =>
-          (e.batch_names ?? []).some((b) => normalizeBatchName(b) === batch),
-        );
+        const le = findEntryInSlot(bPmLab, batch, hiddenIds);
         if (le)
           lines.push(
             `${prefix}${le.course_code ?? bPmLab}: ${le.faculty_code ?? ""}`,
@@ -290,20 +335,31 @@ export const generateTimetableExcel = async (generation_id) => {
         continue;
       }
 
-      const gridCell = map[pi] ?? null;
       if (
         !gridCell ||
         gridCell.slot_type === "break" ||
         gridCell.slot_type === "free"
       )
         continue;
-      const entry = getEntry(gridCell.slot_name, batch);
+      const entry = findEntryInSlot(gridCell.slot_name, batch, hiddenIds);
       if (!entry) continue;
       lines.push(
         `${prefix}${entry.course_code ?? "—"}: ${entry.faculty_code ?? ""}`,
       );
     }
     return lines.join("\n");
+  };
+
+  // Helper to check if a batch has a lab in a given block (AM or PM)
+  // Returns the entry if found, else null
+  const getLabEntryForBatch = (batch, labSlotName, trackMap, periodIndex) => {
+    if (!labSlotName) return null;
+    const gridCell = trackMap[periodIndex];
+    if (!gridCell) return null;
+    const hiddenIds = new Set(
+      (gridCell.hidden_assignment_ids ?? []).map(String),
+    );
+    return findEntryInSlot(labSlotName, batch, hiddenIds);
   };
 
   // ── Workbook ──────────────────────────────────────────────────────────────
@@ -320,7 +376,6 @@ export const generateTimetableExcel = async (generation_id) => {
     const t2Map = buildTrackMap(day, 2);
     const t1PmLab = getLabBlock(t1Map, PM_LAB_BLOCK);
     const t2AmLab = getLabBlock(t2Map, AM_LAB_BLOCK);
-    const isLabDay = !!(t1PmLab || t2AmLab);
 
     [9.29, 9.14, 21, 19.14, 23.43, 19, 11.29, 21.57, 21, 18].forEach((w, i) => {
       ws.getColumn(i + 1).width = w;
@@ -452,6 +507,7 @@ export const generateTimetableExcel = async (generation_id) => {
     }
 
     ws.mergeCells(10, 8, 10, 10);
+    const isLabDay = !!(t1PmLab || t2AmLab);
     if (isLabDay) {
       const labLabel = [t1PmLab, t2AmLab].filter(Boolean).join(" / ");
       sc(ws.getCell(10, 8), {
@@ -495,6 +551,34 @@ export const generateTimetableExcel = async (generation_id) => {
       } = tableRows[ri];
       const semFill = getFillForRow(sem, is1stYear, section);
 
+      // ── Determine if this row has uniform AM/PM labs ──────────────────
+      let allHaveAmLab = true;
+      let allHavePmLab = true;
+      if (batches.length === 0) {
+        allHaveAmLab = false;
+        allHavePmLab = false;
+      } else {
+        for (const batch of batches) {
+          const batchId = batchIdMap[batch];
+          const track = resolveTrackForBatch(schedule, day, batchId);
+
+          // AM lab: track 2 and t2AmLab exists and has entry
+          const hasAmLab =
+            track === 2 &&
+            t2AmLab !== null &&
+            getLabEntryForBatch(batch, t2AmLab, t2Map, 0) !== null;
+          // PM lab: track 1 and t1PmLab exists and has entry
+          const hasPmLab =
+            track === 1 &&
+            t1PmLab !== null &&
+            getLabEntryForBatch(batch, t1PmLab, t1Map, 5) !== null;
+
+          if (!hasAmLab) allHaveAmLab = false;
+          if (!hasPmLab) allHavePmLab = false;
+        }
+      }
+
+      // ── Write Department (col A) ──────────────────────────────────────
       if (isFirstInDept) {
         sc(ws.getCell(r, 1), {
           value: dept,
@@ -506,6 +590,7 @@ export const generateTimetableExcel = async (generation_id) => {
         });
       }
 
+      // ── Write Semester (col B) ────────────────────────────────────────
       sc(ws.getCell(r, 2), {
         value: sem,
         bold: true,
@@ -514,6 +599,62 @@ export const generateTimetableExcel = async (generation_id) => {
         borders: true,
       });
 
+      // ── AM block: periods 0,1,2 (cols 3-5) ──────────────────────────
+      if (allHaveAmLab) {
+        // Merge columns 3-5 and display the lab content (from first batch)
+        ws.mergeCells(r, 3, r, 5);
+        const firstBatch = batches[0];
+        const labEntry = getLabEntryForBatch(firstBatch, t2AmLab, t2Map, 0);
+        const labText = labEntry
+          ? `${labEntry.course_code ?? t2AmLab}: ${labEntry.faculty_code ?? ""}`
+          : "";
+        sc(ws.getCell(r, 3), {
+          value: labText,
+          size: 9,
+          fillArgb: semFill,
+          borders: true,
+        });
+      } else {
+        for (let pi = 0; pi <= 2; pi++) {
+          const col = pi + 3;
+          const text = getCellText(
+            day,
+            batches,
+            t1Map,
+            t2Map,
+            t1PmLab,
+            t2AmLab,
+            pi,
+          );
+          sc(ws.getCell(r, col), {
+            value: text || "",
+            size: 9,
+            fillArgb: semFill,
+            borders: true,
+          });
+        }
+      }
+
+      // ── Period 3 (12:00-12:55) - col 6 ──────────────────────────────
+      const pi3text = getCellText(
+        day,
+        batches,
+        t1Map,
+        t2Map,
+        t1PmLab,
+        t2AmLab,
+        3,
+      );
+      sc(ws.getCell(r, 6), {
+        value: pi3text || "",
+        size: 9,
+        fillArgb: semFill,
+        borders: true,
+      });
+
+      // ── Lunch column (col 7) ──────────────────────────────────────────
+      // Only set the cell value if it's the first row of the department group;
+      // the cell will be merged later across the group.
       if (isFirstInDept) {
         sc(ws.getCell(r, 7), {
           value: "Lunch",
@@ -522,46 +663,54 @@ export const generateTimetableExcel = async (generation_id) => {
           fillArgb: LUNCH_FILL,
           borders: true,
         });
-      }
-
-      for (let pi = 0; pi <= 3; pi++) {
-        const col = pi + 3;
-        const text = getCellText(batches, t1Map, t2Map, t1PmLab, t2AmLab, pi);
-        sc(ws.getCell(r, col), {
-          value: text || "",
-          size: 9,
-          fillArgb: semFill,
+      } else {
+        // For subsequent rows, we still need to apply fill/borders but no value
+        sc(ws.getCell(r, 7), {
+          value: "",
+          fillArgb: LUNCH_FILL,
           borders: true,
         });
       }
 
-      ws.mergeCells(r, 8, r, 10);
-      let pmText = "";
-      if (isLabDay) {
-        pmText = getCellText(
-          batches,
-          t1Map,
-          t2Map,
-          t1PmLab,
-          t2AmLab,
-          PM_LAB_BLOCK[0],
-        );
+      // ── PM block: periods 5,6,7 (cols 8-10) ──────────────────────────
+      if (allHavePmLab) {
+        ws.mergeCells(r, 8, r, 10);
+        const firstBatch = batches[0];
+        const labEntry = getLabEntryForBatch(firstBatch, t1PmLab, t1Map, 5);
+        const labText = labEntry
+          ? `${labEntry.course_code ?? t1PmLab}: ${labEntry.faculty_code ?? ""}`
+          : "";
+        sc(ws.getCell(r, 8), {
+          value: labText,
+          size: 9,
+          fillArgb: semFill,
+          borders: true,
+        });
       } else {
-        const pmParts = PM_LAB_BLOCK.map((pi) =>
-          getCellText(batches, t1Map, t2Map, null, null, pi),
-        ).filter(Boolean);
-        pmText = pmParts.join("\n");
+        for (let pi = 5; pi <= 7; pi++) {
+          const col = pi + 3; // pi=5 -> col 8
+          const text = getCellText(
+            day,
+            batches,
+            t1Map,
+            t2Map,
+            t1PmLab,
+            t2AmLab,
+            pi,
+          );
+          sc(ws.getCell(r, col), {
+            value: text || "",
+            size: 9,
+            fillArgb: semFill,
+            borders: true,
+          });
+        }
       }
-      sc(ws.getCell(r, 8), {
-        value: pmText || "",
-        size: 9,
-        fillArgb: semFill,
-        borders: true,
-      });
 
       ws.getRow(r).height = 13.5;
       r++;
 
+      // ── After finishing a department group, merge dept and lunch columns ──
       const next = tableRows[ri + 1];
       const isLastInGroup = !next || next.isFirstInDept;
 

@@ -5,6 +5,7 @@ import {
   generateTimetable,
   getActiveSchedule,
   getGeneratedSlots,
+  publishSchedule,
 } from "../../controllers/admin/timetableController.js";
 
 import { saveAndEvaluateSchedule } from "../../controllers/admin/scheduleEditController.js";
@@ -46,6 +47,7 @@ router.patch("/skeleton/:id/activate", activateSkeleton);
 // Generation + reads
 router.post("/generate", generateTimetable);
 router.get("/schedule", getActiveSchedule);
+router.patch("/schedule/:timetable_id/publish", publishSchedule); // add
 router.get("/slots", getGeneratedSlots);
 
 // Rework (manual grid edit + rescore, no engine spawn)

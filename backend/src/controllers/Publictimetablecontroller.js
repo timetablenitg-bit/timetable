@@ -55,7 +55,7 @@ export const getPublicSchedule = async (req, res) => {
 
     const schedule = await TimetableSchedule.findOne({
       session_id,
-      is_active: true,
+      is_published: true,
     });
 
     if (!schedule)
@@ -94,7 +94,7 @@ export const getPublicSlots = async (req, res) => {
 
     const activeSchedule = await TimetableSchedule.findOne({
       session_id,
-      is_active: true,
+      is_published: true,
     }).select("generation_id score meta createdAt track2_batches");
 
     if (!activeSchedule)

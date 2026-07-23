@@ -281,6 +281,17 @@ const InstituteView = ({ scheduleData, slotsData }) => {
     const current = resolveBatchTrack(trackAssignments, day, batchId);
     const next = current === 2 ? 1 : 2;
 
+    // NOTE: this only PATCHes track_assignments (a pure display projection).
+    // If this batch has any manual_entries placed on the CURRENT track's
+    // cells for this day, they live only on those specific cell objects —
+    // switching track does not move them, because track1/track2 are two
+    // independently-generated arrangements with their own cells, not two
+    // views of the same cell. Moving a manual placement across tracks is a
+    // backend concern (the SET_TRACK handler would need to find this
+    // batch's manual_entries in the old track's cells for `day` and copy/
+    // relocate them into the new track's corresponding cells). Flagging
+    // here rather than silently "fixing" it client-side, since the
+    // frontend has no authority to mutate another cell's manual_entries.
     await setBatchTrack(timetableId, { day, batch_id: batchId, track: next });
   };
 
@@ -367,6 +378,14 @@ const InstituteView = ({ scheduleData, slotsData }) => {
     </td>
   );
 
+  // FIXED — `isT2` must reflect the admin's saved choice (isBatchOnTrack2)
+  // alone. It previously also required `!!t2AmLab` (an engine-placement
+  // fact), which meant: PATCH track=2 succeeds and is persisted, but the
+  // very next render recomputes isT2 as false whenever this generation's
+  // track-2 AM block for `day` doesn't happen to contain a lab — making
+  // the toggle look completely inert. Track display is a skeleton/admin-
+  // choice fact, never gated on what got placed (see resolveBatchTrack.js
+  // and models/timetableScheduleModel.js).
   const getDayTrackInfo = (day, batch) => {
     const dayGrid = scheduleData?.grid?.[day];
     const t1Cells = (dayGrid?.track1 ?? []).sort(
@@ -379,12 +398,16 @@ const InstituteView = ({ scheduleData, slotsData }) => {
     const t2Map = Object.fromEntries(t2Cells.map((c) => [c.period_index, c]));
     const t1PmLab = getLabBlock(t1Map, PM_LAB_BLOCK);
     const t2AmLab = getLabBlock(t2Map, AM_LAB_BLOCK);
-    const isT2 = isBatchOnTrack2(day, batch) && !!t2AmLab;
+    const isT2 = isBatchOnTrack2(day, batch);
     return {
       map: isT2 ? t2Map : t1Map,
       isT2,
       rowHasT2: TOGGLE_DAYS.has(day),
       batchPmLab: isT2 ? null : t1PmLab,
+      // Fine for this to be null when isT2 is true but there's no AM lab
+      // this generation — renderPeriodCells / buildBatchDayRow both check
+      // `if (isT2 && batchAmLab)` before doing anything lab-specific, and
+      // fall through to normal per-period cell rendering otherwise.
       batchAmLab: isT2 ? t2AmLab : null,
     };
   };
@@ -675,6 +698,12 @@ const InstituteView = ({ scheduleData, slotsData }) => {
   const t2Map = Object.fromEntries(t2Cells.map((c) => [c.period_index, c]));
   const t1PmLab = getLabBlock(t1Map, PM_LAB_BLOCK);
   const t2AmLab = getLabBlock(t2Map, AM_LAB_BLOCK);
+  // FIXED — this used to gate the whole day's toggle-ability display info
+  // on lab placement (`hasT2 = !!t2AmLab`). Whether TRACK TOGGLING is even
+  // shown for this day is already correctly driven by TOGGLE_DAYS below;
+  // `hasT2` here is now only used for the informational "Track 2: ..."
+  // legend text, so it's fine as a lab-presence check for that specific
+  // purpose. The per-batch `isT2` below no longer depends on it.
   const hasT2 = !!t2AmLab;
   const canToggleTrack = TOGGLE_DAYS.has(selectedDay);
 
@@ -754,7 +783,10 @@ const InstituteView = ({ scheduleData, slotsData }) => {
           <tbody>
             {allBatches.map((batch, bi) => {
               const assignedT2 = isBatchOnTrack2(selectedDay, batch);
-              const isT2 = assignedT2 && hasT2;
+              // FIXED — was `assignedT2 && hasT2`, same bug as
+              // getDayTrackInfo: gated the admin's saved choice on whether
+              // a lab happened to be placed in this generation's AM block.
+              const isT2 = assignedT2;
               const map = isT2 ? t2Map : t1Map;
               const batchPmLab = isT2 ? null : t1PmLab;
               const batchAmLab = isT2 ? t2AmLab : null;
