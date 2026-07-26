@@ -809,6 +809,7 @@ const BatchGroupCard = ({
         onClick={() => onToggleExpand(batchKey)}
         role="button"
         aria-expanded={!collapsed}
+        data-tour="review-batch-header"
       >
         <div className="flex items-center gap-2">
           <ChevronRight
@@ -1115,7 +1116,7 @@ const ManualReviewPanel = ({
         </div>
       )}
 
-      <div className="space-y-4">
+      <div className="space-y-4" data-tour="review-queue">
         {groups.map(([batchKey, batchItems]) => (
           <BatchGroupCard
             key={batchKey}

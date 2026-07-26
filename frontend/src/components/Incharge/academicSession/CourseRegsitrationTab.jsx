@@ -55,7 +55,7 @@ const CourseRegistrationTab = ({ session }) => {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4" data-tour="registration-list">
       {batches.map(({ batch, students }) => {
         const completed = students.filter(
           (s) => s.registration?.status === "COMPLETED",
@@ -73,6 +73,7 @@ const CourseRegistrationTab = ({ session }) => {
             {/* Batch header */}
             <button
               onClick={() => toggleBatch(batch._id)}
+              data-tour="registration-batch-header"
               className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors text-left"
             >
               <div className="flex items-center gap-3">

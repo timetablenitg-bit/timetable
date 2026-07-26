@@ -23,6 +23,7 @@ const GenerateTableHeader = ({ onAddSession, sessionCount, totalSessions }) => {
 
       <button
         onClick={onAddSession}
+        data-tour="add-session-btn"
         className="cursor-pointer group relative px-3 py-2 sm:px-6 sm:py-3 bg-gradient-to-r from-emerald-600 to-teal-500 dark:from-emerald-500 dark:to-teal-500 text-white font-medium rounded-xl 
                    hover:shadow-lg hover:shadow-emerald-500/25 dark:hover:shadow-emerald-500/20 transition-all duration-300 ease-in-out
                    flex items-center gap-1 sm:gap-2 overflow-hidden transform hover:scale-105 active:scale-95 text-sm sm:text-base"

@@ -388,13 +388,19 @@ const DualTrackScheduleView = ({
 
       {/* CHANGED — legend no longer advertises "M" pills / amber dots (those
           don't render in this view anymore). Just explains the lock dot. */}
-      <div className="flex items-center gap-2 text-[10px] text-gray-400 dark:text-gray-500">
+      <div
+        className="flex items-center gap-2 text-[10px] text-gray-400 dark:text-gray-500"
+        data-tour="schedule-locked-legend"
+      >
         <span className="w-2 h-2 rounded-full bg-gray-400 dark:bg-gray-500" />
         Locked — placed via Manual Review (see Review / Institute tab)
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-lg border border-gray-100 dark:border-gray-800">
+      <div
+        className="overflow-x-auto rounded-lg border border-gray-100 dark:border-gray-800"
+        data-tour="schedule-grid"
+      >
         <table
           className="border-collapse"
           style={{ minWidth: 820, width: "100%", tableLayout: "fixed" }}

@@ -16,7 +16,10 @@ const EditToolbar = ({
   warnings = [],
 }) => (
   <div className="space-y-2">
-    <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800">
+    <div
+      data-tour="schedule-edit-toolbar"
+      className="flex flex-wrap items-center gap-2 p-3 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800"
+    >
       {/* Hint */}
       <div className="flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-300 flex-1 min-w-0">
         <Info size={11} className="shrink-0" />

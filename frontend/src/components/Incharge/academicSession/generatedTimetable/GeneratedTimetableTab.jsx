@@ -1,4 +1,3 @@
-// frontend/src/components/incharge/academicSession/generatedTimetable/GeneratedTimetableTab.jsx
 import React, {
   useEffect,
   useState,
@@ -19,7 +18,7 @@ import {
   ClipboardCheck,
   UploadCloud,
 } from "lucide-react";
-import toast from "react-hot-toast"; // <-- added for notifications
+import toast from "react-hot-toast";
 import useAdminStore from "../../../../store/admin/index";
 import useManualReviewStore from "../../../../store/useManualReviewStore";
 import ScoreBadge from "./ScoreBadge";
@@ -28,6 +27,8 @@ import DualTrackScheduleView from "./DualTrackScheduleView";
 import EditableSlotsView from "./EditableSlotsView";
 import InstituteView from "./InstituteView";
 import ManualReviewPanel from "./ManualReviewPanel";
+import { useTour } from "../../../../context/TourContext";
+import useTourAutostart from "../../../../tour/Usetourautostart";
 
 const BASE_TABS = [
   { key: "schedule", label: "Schedule", icon: Rows3 },
@@ -51,7 +52,7 @@ const GeneratedTimetableTab = ({ session }) => {
     scheduleError,
     slotsError,
     exportTimetableExcel,
-    // ---- NEW locks & regeneration ----
+
     locksData,
     fetchLocks,
     lockCourseToSlot,
@@ -73,8 +74,43 @@ const GeneratedTimetableTab = ({ session }) => {
   const [saveWarnings, setSaveWarnings] = useState([]);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
 
-  // publishSchedule now toggles: it publishes if not published, or
-  // unpublishes if already published — same endpoint, same handler.
+  const { switchView, view: activeTourView } = useTour();
+
+  const isScheduleEditingView = activeTab === "schedule" && scheduleEditMode;
+
+  const tourView =
+    activeTab === "slots" && slotsEditMode
+      ? "academic-session-timetable-slots-editing"
+      : isScheduleEditingView
+        ? "academic-session-timetable-schedule-editing"
+        : `academic-session-timetable-${activeTab}`;
+
+  useTourAutostart(tourView, {
+    enabled:
+      (activeTab !== "schedule" || scheduleEditMode) &&
+      activeTab !== "institute",
+  });
+
+  useEffect(() => {
+    if (activeTab === "schedule" && !scheduleEditMode) return;
+    // Institute manages its own base/filtered/editing tour transitions
+    // internally (see InstituteView) — don't fight it from here.
+    if (activeTab === "institute") return;
+    // Already on this view: calling switchView again here only happens
+    // because `switchView`'s identity changed (e.g. the child's own
+    // autostart just started the tour), not because the target view
+    // actually changed. Re-running start() in that case drops the
+    // shell-intro steps and resets stepIndex for no reason.
+    if (activeTourView === tourView) return;
+    switchView(tourView);
+  }, [tourView, switchView, activeTab, scheduleEditMode, activeTourView]);
+
+  const { start, stop } = useTour();
+
+  useEffect(() => {
+    return () => stop();
+  }, [stop]);
+
   const isPublished = !!activeScheduleData?.is_published;
 
   const handlePublish = async () => {
@@ -104,10 +140,9 @@ const GeneratedTimetableTab = ({ session }) => {
     fetchGeneratedSlots(session._id);
     fetchActiveSchedule(session._id);
     fetchPendingItems(session._id);
-    fetchLocks(session._id); // <-- fetch locks on session change
+    fetchLocks(session._id);
   }, [session?._id, timetableData]);
 
-  // ── tab switch cancels active edit ────────────────────────────────────────
   const handleTabChange = (key) => {
     if (activeTab === "schedule" && scheduleEditMode) {
       setScheduleEditMode(false);
@@ -140,7 +175,6 @@ const GeneratedTimetableTab = ({ session }) => {
     setScheduleEditMode(false);
   };
 
-  // ── slots cancel / save (drives EditableSlotsView via ref) ───────────────
   const handleCancelSlotsEdit = () => {
     slotsViewRef.current?.cancel();
     setSlotsEditMode(false);
@@ -154,7 +188,6 @@ const GeneratedTimetableTab = ({ session }) => {
     }
   };
 
-  // ── theory cell swap ──────────────────────────────────────────────────────
   const handleSwapCells = useCallback(
     (srcDay, srcTrack, srcPi, dstDay, dstTrack, dstPi) => {
       setLocalGrid((prev) => {
@@ -182,7 +215,6 @@ const GeneratedTimetableTab = ({ session }) => {
     [],
   );
 
-  // ── lab block swap ────────────────────────────────────────────────────────
   const handleLabSwap = useCallback((srcDay, srcTrack, dstDay, dstTrack) => {
     setLocalGrid((prev) => {
       const next = structuredClone(prev);
@@ -217,7 +249,6 @@ const GeneratedTimetableTab = ({ session }) => {
     });
   }, []);
 
-  // ── click-to-assign ───────────────────────────────────────────────────────
   const handleCellChange = useCallback(
     (day, track, pi, slot_name, slot_type) => {
       setLocalGrid((prev) => {
@@ -237,7 +268,6 @@ const GeneratedTimetableTab = ({ session }) => {
     [],
   );
 
-  // ── save (single action now — always re-validates + rescores) ────────────
   const handleSave = async () => {
     if (!localGrid || !activeScheduleData?.timetable_id) return;
     const result = await saveSchedule(
@@ -272,7 +302,6 @@ const GeneratedTimetableTab = ({ session }) => {
     fetchGeneratedSlots(session._id);
   }, [fetchActiveSchedule, fetchGeneratedSlots, session?._id]);
 
-  // ---- NEW: regenerate timetable with locks ----
   const handleRegenerateWithLocks = async () => {
     try {
       await generateTimetable(session._id);
@@ -287,10 +316,9 @@ const GeneratedTimetableTab = ({ session }) => {
     }
   };
 
-  // inside GeneratedTimetableTab
   const batchesMap = useMemo(() => {
     const map = new Map();
-    // assuming session.batches is an array of { _id, name }
+
     (session.batches || []).forEach((b) => map.set(b.name, b._id));
     return map;
   }, [session.batches]);
@@ -307,7 +335,6 @@ const GeneratedTimetableTab = ({ session }) => {
       : activeScheduleData;
   }, [activeScheduleData, localGrid]);
 
-  // ── which panel (and empty-state message) belongs to the active tab ────────
   const panel = useMemo(() => {
     if (activeTab === "schedule") {
       return displayScheduleData
@@ -335,7 +362,6 @@ const GeneratedTimetableTab = ({ session }) => {
                 editMode={slotsEditMode}
                 sessionId={session._id}
                 onSlotsUpdated={handleSlotsUpdated}
-                // ---- NEW locks props ----
                 locksData={locksData}
                 fetchLocks={fetchLocks}
                 lockCourseToSlot={lockCourseToSlot}
@@ -359,7 +385,7 @@ const GeneratedTimetableTab = ({ session }) => {
         ),
       };
     }
-    // institute
+
     return displayScheduleData && generatedSlotsData
       ? {
           node: (
@@ -416,8 +442,11 @@ const GeneratedTimetableTab = ({ session }) => {
 
   return (
     <div className="space-y-4">
-      {/* Header — session name on the left, score + actions on the right */}
-      <div className="flex items-center justify-between gap-3">
+      {}
+      <div
+        className="flex items-center justify-between gap-3"
+        data-tour="timetable-toolbar"
+      >
         <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
           {session?.term} Term
         </h3>
@@ -425,11 +454,12 @@ const GeneratedTimetableTab = ({ session }) => {
         <div className="flex items-center gap-1.5">
           {score != null && <ScoreBadge score={score} />}
 
-          {/* ---- NEW: Regenerate with Locks button (only in Slots tab) ---- */}
+          {}
           {activeTab === "slots" && (
             <button
               onClick={handleRegenerateWithLocks}
               disabled={isGeneratingTimetable}
+              data-tour="regenerate-locks-btn"
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors disabled:opacity-50"
             >
               {isGeneratingTimetable ? (
@@ -441,17 +471,29 @@ const GeneratedTimetableTab = ({ session }) => {
             </button>
           )}
 
-          {(activeTab === "schedule" || activeTab === "slots") && !editMode && (
+          {(activeTab === "schedule" || activeTab === "slots") && (
             <button
-              onClick={handleEditToggle}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              onClick={editMode ? undefined : handleEditToggle}
+              disabled={editMode}
+              data-tour="timetable-edit-btn"
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 transition-colors ${
+                editMode
+                  ? "opacity-50 cursor-default"
+                  : "hover:bg-gray-50 dark:hover:bg-gray-700"
+              }`}
             >
               <Pencil size={12} />
-              {activeTab === "slots" ? "Edit slots" : "Edit"}
+              {editMode
+                ? activeTab === "slots"
+                  ? "Editing slots"
+                  : "Editing"
+                : activeTab === "slots"
+                  ? "Edit slots"
+                  : "Edit"}
             </button>
           )}
 
-          {/* Publish / Unpublish — single toggle button + confirm popover */}
+          {}
           <div className="relative">
             <button
               onClick={() => setShowPublishConfirm((v) => !v)}
@@ -540,7 +582,7 @@ const GeneratedTimetableTab = ({ session }) => {
         </div>
       </div>
 
-      {/* Schedule edit toolbar — Cancel / Save (always re-validates + rescores) */}
+      {}
       {activeTab === "schedule" && scheduleEditMode && (
         <EditToolbar
           onCancel={handleCancelScheduleEdit}
@@ -551,7 +593,7 @@ const GeneratedTimetableTab = ({ session }) => {
         />
       )}
 
-      {/* Slots edit toolbar — Cancel / Save */}
+      {}
       {activeTab === "slots" && slotsEditMode && (
         <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800">
           <div className="flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-300 flex-1 min-w-0">
@@ -598,8 +640,11 @@ const GeneratedTimetableTab = ({ session }) => {
         </div>
       )}
 
-      {/* Sub-tabs */}
-      <div className="flex gap-4 border-b border-gray-100 dark:border-gray-700">
+      {}
+      <div
+        className="flex gap-4 border-b border-gray-100 dark:border-gray-700"
+        data-tour="timetable-subtabs"
+      >
         {BASE_TABS.map(({ key, label, icon: Icon }) => {
           const isActive = activeTab === key;
           const isDirty =
@@ -630,10 +675,14 @@ const GeneratedTimetableTab = ({ session }) => {
         })}
       </div>
 
-      {/* Tab content */}
-      {panel.node ?? (
-        <p className="text-sm text-gray-400 text-center py-10">{panel.empty}</p>
-      )}
+      {}
+      <div data-tour="timetable-panel">
+        {panel.node ?? (
+          <p className="text-sm text-gray-400 text-center py-10">
+            {panel.empty}
+          </p>
+        )}
+      </div>
     </div>
   );
 };

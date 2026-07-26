@@ -52,7 +52,7 @@ const SessionList = ({ sessions, onEdit, onDelete }) => {
   };
   return (
     <>
-      <div className="space-y-4 animate-fadeInUp">
+      <div className="space-y-4 animate-fadeInUp" data-tour="session-list">
         {sessions.map((session) => (
           <div
             key={session._id}

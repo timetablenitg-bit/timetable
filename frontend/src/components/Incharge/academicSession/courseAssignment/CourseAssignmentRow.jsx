@@ -78,6 +78,9 @@ const CourseAssignmentRow = ({
 
   return (
     <tr
+      data-tour={
+        row.assignment_type === "backlog" ? "assignment-backlog-row" : undefined
+      }
       className={`transition-colors ${rowClasses} ${
         isDeleting ? "opacity-50 pointer-events-none" : ""
       }`}
@@ -87,7 +90,7 @@ const CourseAssignmentRow = ({
       </td>
 
       {/* Course cell */}
-      <td className="px-4 py-3 align-middle">
+      <td data-tour="assignment-course-cell" className="px-4 py-3 align-middle">
         <CourseCell
           row={row}
           batch={batch}
@@ -98,7 +101,10 @@ const CourseAssignmentRow = ({
       </td>
 
       {/* Faculty — full name chip, widened so names aren't clipped */}
-      <td className="px-3 py-3 w-44 align-middle">
+      <td
+        className="px-3 py-3 w-44 align-middle"
+        data-tour="assignment-faculty-cell"
+      >
         <FacultyCell
           faculties={getFacultyPoolForRow(row, batch, faculties)}
           allFaculties={faculties}
@@ -108,7 +114,7 @@ const CourseAssignmentRow = ({
       </td>
 
       {/* Assignment type */}
-      <td className="px-3 py-3 align-middle">
+      <td className="px-3 py-3 align-middle" data-tour="assignment-type-cell">
         <CompactSelect
           value={row.assignment_type}
           onChange={(v) => onUpdateRow({ assignment_type: v })}
@@ -151,7 +157,10 @@ const CourseAssignmentRow = ({
 
       {/* Links — lab room + slot sync, compact icon buttons, same row */}
       <td className="px-3 py-3 align-middle">
-        <div className="flex items-center justify-center gap-1.5">
+        <div
+          className="flex items-center justify-center gap-1.5"
+          data-tour="assignment-links-cell"
+        >
           {isLab && (
             <SharedLabPicker
               labAssignmentPool={labAssignmentPool}

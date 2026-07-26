@@ -104,7 +104,7 @@ const CourseAssignmentTab = ({ session, onSave, onAssignmentsChange }) => {
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-3" data-tour="assignment-batch-list">
           {displayedBatches.map((batch) => {
             return (
               <BatchAssignmentCard

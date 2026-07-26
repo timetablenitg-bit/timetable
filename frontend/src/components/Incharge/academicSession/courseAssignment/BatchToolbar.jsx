@@ -21,7 +21,10 @@ const BatchToolbar = ({
   onToggleSortDir,
   resultCount,
 }) => (
-  <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 sm:p-4 flex flex-col sm:flex-row gap-3 sm:items-center">
+  <div
+    data-tour="assignment-toolbar"
+    className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 sm:p-4 flex flex-col sm:flex-row gap-3 sm:items-center"
+  >
     {/* Department filter */}
     <select
       value={filterDepartment}

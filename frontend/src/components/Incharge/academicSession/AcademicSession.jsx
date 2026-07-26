@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   BookOpen,
   CheckSquare,
@@ -12,6 +12,9 @@ import CourseAssignmentTab from "./courseAssignment/CourseAssignmentTab";
 import FinalizedAssignmentTab from "./FinalizedAssignmentTab";
 import GeneratedTimetableTab from "./generatedTimetable/GeneratedTimetableTab";
 import CourseRegistrationTab from "./CourseRegsitrationTab";
+import TourButton from "../../../tour/Tourbutton";
+import useTourAutostart from "../../../tour/Usetourautostart";
+import { useTour } from "../../../context/TourContext";
 
 const TABS = [
   {
@@ -27,6 +30,13 @@ const TABS = [
 const AcademicSession = ({ session, onClose }) => {
   const [activeTab, setActiveTab] = useState("courseRegistration");
   const [savedAssignments, setSavedAssignments] = useState([]);
+
+  const { switchView } = useTour();
+  useTourAutostart(`academic-session-${activeTab}`);
+
+  useEffect(() => {
+    switchView(`academic-session-${activeTab}`);
+  }, [activeTab, switchView]);
 
   if (!session) {
     return (
@@ -66,7 +76,7 @@ const AcademicSession = ({ session, onClose }) => {
       {/* Fixed Header - always at top, never scrolls */}
       <div className="flex-shrink-0 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm">
         {/* Header content */}
-        <div className="px-4 sm:px-6 py-3 sm:py-2.5">
+        <div className="px-4 sm:px-6 py-3 sm:py-2.5" data-tour="session-header">
           <div className="flex items-center justify-between gap-3">
             {/* Left section with title and metadata */}
             <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -158,7 +168,7 @@ const AcademicSession = ({ session, onClose }) => {
         </div>
 
         {/* Tab Bar - Responsive: grid on mobile, flex on desktop */}
-        <div className="px-0">
+        <div className="px-0" data-tour="session-tabs">
           {/* Mobile view - grid layout (3 equal columns) */}
           <div className="grid grid-cols-3 sm:hidden">
             {TABS.map(({ key, label, icon: Icon }) => {
@@ -238,6 +248,7 @@ const AcademicSession = ({ session, onClose }) => {
           {renderTab()}
         </div>
       </div>
+      <TourButton view={`academic-session-${activeTab}`} />
     </div>
   );
 };

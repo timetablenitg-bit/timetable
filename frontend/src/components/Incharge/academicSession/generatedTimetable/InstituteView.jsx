@@ -28,21 +28,14 @@ import {
 } from "lucide-react";
 import WarningsPanel from "./WarningsPanel";
 import BatchCellEditorModal from "./BatchCellEditorModal";
+import { useTour } from "../../../../context/TourContext";
+import useTourAutostart from "../../../../tour/Usetourautostart";
 
-// Days that support a track-2 arrangement. Must match what the skeleton
-// actually defines — see utils/defaultSkeletonCells.js, which only has
-// "Monday-2" and "Tuesday-2" rows. NOTE: backend trackController.js's
-// TOGGLE_DAYS currently also includes Thursday, which is stale relative to
-// the skeleton — flagged separately, should be fixed there too so a
-// Thursday PATCH can't silently set an unrenderable track assignment.
 const TOGGLE_DAYS = new Set(["Monday", "Tuesday"]);
 
-// Same fixed treatment used in BatchTimetableGrid for entries that came
-// from cell.manual_entries rather than a shared GeneratedSlot label.
 const MANUAL_COLOR =
   "bg-fuchsia-50 dark:bg-fuchsia-900/20 text-fuchsia-700 dark:text-fuchsia-300 border-fuchsia-200 dark:border-fuchsia-800";
 
-// ── FilterSelect ──────────────────────────────────────────────────────────────
 const FilterSelect = ({ label, value, onChange, options, colorClass }) => {
   const activeColors = {
     emerald: "bg-emerald-600 text-white border-emerald-600",
@@ -89,10 +82,6 @@ const FilterSelect = ({ label, value, onChange, options, colorClass }) => {
   );
 };
 
-// ── TrackToggle ────────────────────────────────────────────────────────────
-// disabled can be a boolean OR true — when disabled, disabledReason (if
-// provided) overrides the normal title tooltip so the admin knows *why*
-// it's locked, rather than it just looking unresponsive.
 const TrackToggle = ({
   isT2,
   isSaving,
@@ -123,7 +112,6 @@ const TrackToggle = ({
   </button>
 );
 
-// ── InstituteView ─────────────────────────────────────────────────────────────
 const InstituteView = ({ scheduleData, slotsData }) => {
   const [selectedDay, setSelectedDay] = useState("Monday");
   const [batchFilter, setBatchFilter] = useState("");
@@ -137,34 +125,44 @@ const InstituteView = ({ scheduleData, slotsData }) => {
     isSavingBatchWeek,
     scheduleWarnings,
     batchCellError,
-    // NEW — same data EditableSlotsView already uses; reused here so the
-    // Institute view can show unplaced/needs-extra badges and let the
-    // batch cell editor pick from unplaced courses instead of free-typing
-    // only.
+
     unplacedAssignments,
     isFetchingUnplaced,
     fetchUnplacedAssignments,
   } = useAdminStore();
 
-  // NEW — per-batch drag-and-drop edit mode.
   const [batchEditMode, setBatchEditMode] = useState(false);
-  // Map keyed by slot.key -> { day, track, periods, entry }. Staged, local,
-  // nothing hits the server until Save.
+  const {
+    switchView,
+    stop: stopTour,
+    view: activeTourView,
+    run: tourRunning,
+    stepIndex: tourStepIndex,
+    steps: tourSteps,
+  } = useTour();
+  const instituteBaseView = "academic-session-timetable-institute";
+  const instituteFilteredView = "academic-session-timetable-institute-filtered";
+  const instituteEditView = "academic-session-timetable-institute-editing";
+
+  useTourAutostart(instituteBaseView, { enabled: !batchEditMode });
+  useTourAutostart(instituteEditView, { enabled: batchEditMode });
+  useEffect(() => {
+    if (!batchEditMode) return;
+    switchView(instituteEditView);
+  }, [batchEditMode, switchView]);
+
+  useEffect(() => {
+    return () => stopTour();
+  }, [stopTour]);
+
   const [pendingChanges, setPendingChanges] = useState(new Map());
-  const [dragSource, setDragSource] = useState(null); // slot object
+  const [dragSource, setDragSource] = useState(null);
   const [dragOverKey, setDragOverKey] = useState(null);
   const [dragError, setDragError] = useState(null);
-  const [editingSlot, setEditingSlot] = useState(null); // slot object
+  const [editingSlot, setEditingSlot] = useState(null);
 
-  // NEW — admin-added lab blocks for the currently-edited batch, keyed by
-  // `${day}::${track}`, each entry a list of period-index arrays (2 or 3
-  // long, i.e. a 2hr or 3hr lab). Purely local until Save — same staging
-  // pattern as pendingChanges. These let a batch get an extra lab beyond
-  // the skeleton's fixed AM/PM block without touching the skeleton, so no
-  // other batch is affected.
   const [extraLabs, setExtraLabs] = useState(new Map());
-  // NEW — { day, length } while the "pick exact periods" UI is open for a
-  // given day/length; null otherwise.
+
   const [labPickMode, setLabPickMode] = useState(null);
 
   const canEditBatch = !!batchFilter && !facultyFilter;
@@ -173,14 +171,44 @@ const InstituteView = ({ scheduleData, slotsData }) => {
     if (!canEditBatch) {
       setBatchEditMode(false);
       setPendingChanges(new Map());
-      setExtraLabs(new Map()); // NEW
-      setLabPickMode(null); // NEW
+      setExtraLabs(new Map());
+      setLabPickMode(null);
     }
   }, [canEditBatch]);
 
-  // NEW — unplaced assignments feed the badges (shown even outside edit
-  // mode) as well as the "pick from unplaced" tab in BatchCellEditorModal,
-  // so fetch as soon as we have a session to fetch for.
+  useEffect(() => {
+    if (!tourRunning || batchEditMode) return;
+    if (activeTourView !== instituteBaseView) return;
+    const isOnLastBaseStep = tourStepIndex === tourSteps.length - 1;
+    if (!isOnLastBaseStep || !canEditBatch) return;
+    switchView(instituteFilteredView);
+  }, [
+    tourRunning,
+    activeTourView,
+    batchEditMode,
+    tourStepIndex,
+    tourSteps.length,
+    canEditBatch,
+    switchView,
+    instituteBaseView,
+    instituteFilteredView,
+  ]);
+
+  useEffect(() => {
+    if (!tourRunning || batchEditMode) return;
+    if (activeTourView !== instituteFilteredView) return;
+    if (canEditBatch) return;
+    switchView(instituteBaseView);
+  }, [
+    tourRunning,
+    activeTourView,
+    batchEditMode,
+    canEditBatch,
+    switchView,
+    instituteBaseView,
+    instituteFilteredView,
+  ]);
+
   useEffect(() => {
     const sessionId = scheduleData?.session_id;
     if (sessionId) {
@@ -190,7 +218,6 @@ const InstituteView = ({ scheduleData, slotsData }) => {
 
   const isFiltered = !!(batchFilter || facultyFilter);
 
-  // ── derived data ────────────────────────────────────────────────────────────
   const slotMap = useMemo(() => {
     if (!slotsData?.slots) return {};
     return Object.fromEntries(
@@ -264,15 +291,11 @@ const InstituteView = ({ scheduleData, slotsData }) => {
     return resolveBatchTrack(trackAssignments, day, batchId) === 2;
   };
 
-  // NEW — does this day currently have any unsaved edit-mode changes
-  // staged? Used to block track toggling for that day until the admin
-  // saves or cancels, since pendingChanges keys are track-specific
-  // (`${day}::${track}::${period}`) and would silently orphan otherwise.
   const dayHasPendingChanges = (day) =>
     [...pendingChanges.keys()].some((k) => k.startsWith(`${day}::`));
 
   const handleToggleTrack = async (day, batchName) => {
-    if (batchEditMode && dayHasPendingChanges(day)) return; // guarded, shouldn't fire (button disabled) but belt-and-braces
+    if (batchEditMode && dayHasPendingChanges(day)) return;
 
     const batchId = batchIdByName[batchName];
     const timetableId = scheduleData?.timetable_id;
@@ -281,24 +304,9 @@ const InstituteView = ({ scheduleData, slotsData }) => {
     const current = resolveBatchTrack(trackAssignments, day, batchId);
     const next = current === 2 ? 1 : 2;
 
-    // NOTE: this only PATCHes track_assignments (a pure display projection).
-    // If this batch has any manual_entries placed on the CURRENT track's
-    // cells for this day, they live only on those specific cell objects —
-    // switching track does not move them, because track1/track2 are two
-    // independently-generated arrangements with their own cells, not two
-    // views of the same cell. Moving a manual placement across tracks is a
-    // backend concern (the SET_TRACK handler would need to find this
-    // batch's manual_entries in the old track's cells for `day` and copy/
-    // relocate them into the new track's corresponding cells). Flagging
-    // here rather than silently "fixing" it client-side, since the
-    // frontend has no authority to mutate another cell's manual_entries.
     await setBatchTrack(timetableId, { day, batch_id: batchId, track: next });
   };
 
-  // NEW — per-batch count of still-unplaced sessions, split lecture vs lab
-  // vs other, so "needs an extra lecture/lab" can be shown right under the
-  // batch name instead of the admin having to go dig through the Slots tab
-  // or the Manual Review panel.
   const batchUnplacedSummary = useMemo(() => {
     const map = {};
     (unplacedAssignments ?? []).forEach((a) => {
@@ -334,14 +342,9 @@ const InstituteView = ({ scheduleData, slotsData }) => {
     );
   };
 
-  // ── shared cell helpers ─────────────────────────────────────────────────────
   const getEntryForBatchPeriod = (batch, cell) =>
     resolveCellEntries(cell, slotMap, batch);
 
-  // CHANGED — now checks the anchor cell's manual_entries first (same
-  // priority as resolveCellEntries), falling back to the raw slot_name
-  // lookup. Without this, a lab moved via the new editor would never
-  // render anywhere, including outside edit mode.
   const getLabEntry = (labSlotName, batch, anchorCell) => {
     const manual = (anchorCell?.manual_entries ?? []).find((e) =>
       (e.batch_names ?? e.batches ?? []).includes(batch),
@@ -361,10 +364,6 @@ const InstituteView = ({ scheduleData, slotsData }) => {
     );
   };
 
-  // NEW — mirrors isManualEntry (used for theory cells) but for lab
-  // entries resolved via getLabEntry, which can come from anchorCell's
-  // manual_entries array. A reference check is enough since getLabEntry
-  // returns the exact object from that array when it's a manual placement.
   const isManualLabEntry = (anchorCell, entry) =>
     !!entry && (anchorCell?.manual_entries ?? []).includes(entry);
 
@@ -378,14 +377,6 @@ const InstituteView = ({ scheduleData, slotsData }) => {
     </td>
   );
 
-  // FIXED — `isT2` must reflect the admin's saved choice (isBatchOnTrack2)
-  // alone. It previously also required `!!t2AmLab` (an engine-placement
-  // fact), which meant: PATCH track=2 succeeds and is persisted, but the
-  // very next render recomputes isT2 as false whenever this generation's
-  // track-2 AM block for `day` doesn't happen to contain a lab — making
-  // the toggle look completely inert. Track display is a skeleton/admin-
-  // choice fact, never gated on what got placed (see resolveBatchTrack.js
-  // and models/timetableScheduleModel.js).
   const getDayTrackInfo = (day, batch) => {
     const dayGrid = scheduleData?.grid?.[day];
     const t1Cells = (dayGrid?.track1 ?? []).sort(
@@ -404,15 +395,11 @@ const InstituteView = ({ scheduleData, slotsData }) => {
       isT2,
       rowHasT2: TOGGLE_DAYS.has(day),
       batchPmLab: isT2 ? null : t1PmLab,
-      // Fine for this to be null when isT2 is true but there's no AM lab
-      // this generation — renderPeriodCells / buildBatchDayRow both check
-      // `if (isT2 && batchAmLab)` before doing anything lab-specific, and
-      // fall through to normal per-period cell rendering otherwise.
+
       batchAmLab: isT2 ? t2AmLab : null,
     };
   };
 
-  // ── period cells renderer — used by the normal (non-edit) views only ────────
   const renderPeriodCells = (batch, isT2, map, batchPmLab, batchAmLab) =>
     Array.from({ length: 8 }, (_, pi) => {
       if (pi === LUNCH_PI) {
@@ -547,11 +534,8 @@ const InstituteView = ({ scheduleData, slotsData }) => {
       );
     });
 
-  // ── FILTERED VIEW (read-only) — all 5 days stacked ──────────────────────────
   const renderFilteredView = () => (
     <div className="space-y-3">
-      {/* NEW — collapsible, batch/faculty-scoped warnings even in the
-          read-only filtered view, not just batch edit mode. */}
       {(batchFilter || facultyFilter) && (
         <WarningsPanel
           warnings={scheduleWarnings}
@@ -560,7 +544,10 @@ const InstituteView = ({ scheduleData, slotsData }) => {
         />
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+      <div
+        className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm"
+        data-tour="institute-batch-edit-grid"
+      >
         <table
           className="border-collapse"
           style={{ minWidth: 780, width: "100%" }}
@@ -641,7 +628,7 @@ const InstituteView = ({ scheduleData, slotsData }) => {
                         >
                           <div className="flex flex-col items-start gap-1">
                             <span>{batch}</span>
-                            <UnplacedBadge batch={batch} /> {/* NEW */}
+                            <UnplacedBadge batch={batch} />
                           </div>
                         </td>
                       )}
@@ -686,7 +673,6 @@ const InstituteView = ({ scheduleData, slotsData }) => {
     </div>
   );
 
-  // ── NORMAL VIEW — single selected day with day toggle ───────────────────────
   const dayGrid = scheduleData?.grid?.[selectedDay];
   const t1Cells = (dayGrid?.track1 ?? []).sort(
     (a, b) => a.period_index - b.period_index,
@@ -698,12 +684,7 @@ const InstituteView = ({ scheduleData, slotsData }) => {
   const t2Map = Object.fromEntries(t2Cells.map((c) => [c.period_index, c]));
   const t1PmLab = getLabBlock(t1Map, PM_LAB_BLOCK);
   const t2AmLab = getLabBlock(t2Map, AM_LAB_BLOCK);
-  // FIXED — this used to gate the whole day's toggle-ability display info
-  // on lab placement (`hasT2 = !!t2AmLab`). Whether TRACK TOGGLING is even
-  // shown for this day is already correctly driven by TOGGLE_DAYS below;
-  // `hasT2` here is now only used for the informational "Track 2: ..."
-  // legend text, so it's fine as a lab-presence check for that specific
-  // purpose. The per-batch `isT2` below no longer depends on it.
+
   const hasT2 = !!t2AmLab;
   const canToggleTrack = TOGGLE_DAYS.has(selectedDay);
 
@@ -731,26 +712,10 @@ const InstituteView = ({ scheduleData, slotsData }) => {
             </button>
           ))}
         </div>
+        {scheduleError && (
+          <span className="text-[10px] text-red-500">{scheduleError}</span>
+        )}
       </div>
-
-      {canToggleTrack && (
-        <div className="flex gap-2 text-xs flex-wrap items-center">
-          <span className="px-2 py-1 rounded-md bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300">
-            Track 1: theory 9–13, {t1PmLab ? `${t1PmLab} lab 14–17` : "free PM"}
-          </span>
-          <span className="px-2 py-1 rounded-md bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 text-purple-600 dark:text-purple-300">
-            Track 2: {t2AmLab ? `${t2AmLab} lab 9–12` : "lab 9–12"}, theory
-            14–17
-          </span>
-          <span className="text-[10px] text-gray-400 dark:text-gray-500 italic">
-            🔁 Click a batch's toggle to change how it's shown — doesn't affect
-            the score.
-          </span>
-          {scheduleError && (
-            <span className="text-[10px] text-red-500">{scheduleError}</span>
-          )}
-        </div>
-      )}
 
       <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
         <table
@@ -783,9 +748,6 @@ const InstituteView = ({ scheduleData, slotsData }) => {
           <tbody>
             {allBatches.map((batch, bi) => {
               const assignedT2 = isBatchOnTrack2(selectedDay, batch);
-              // FIXED — was `assignedT2 && hasT2`, same bug as
-              // getDayTrackInfo: gated the admin's saved choice on whether
-              // a lab happened to be placed in this generation's AM block.
               const isT2 = assignedT2;
               const map = isT2 ? t2Map : t1Map;
               const batchPmLab = isT2 ? null : t1PmLab;
@@ -815,7 +777,7 @@ const InstituteView = ({ scheduleData, slotsData }) => {
                           />
                         )}
                       </div>
-                      <UnplacedBadge batch={batch} /> {/* NEW */}
+                      <UnplacedBadge batch={batch} />
                     </div>
                   </td>
 
@@ -829,13 +791,6 @@ const InstituteView = ({ scheduleData, slotsData }) => {
     </>
   );
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // NEW — freeform batch-week editor (drag & drop, incl. labs)
-  // ══════════════════════════════════════════════════════════════════════════
-
-  // CHANGED — now carries slotName + isManual so the edit-mode cell
-  // renderer can use the same slotColor/MANUAL_COLOR logic as the other
-  // two views instead of falling back to an unmatched/black block.
   const makeSlot = (day, track, periods, isLab, entry, slotName, isManual) => {
     const batchNames = entry?.batch_names ?? entry?.batches ?? [];
     return {
@@ -858,22 +813,14 @@ const InstituteView = ({ scheduleData, slotsData }) => {
     };
   };
 
-  // Every draggable "slot" for this batch on this day — theory cells as
-  // 1-period slots, lab blocks as a single 2- or 3-period slot.
   const buildBatchDayRow = (day, batch) => {
     const { map, isT2, batchPmLab, batchAmLab } = getDayTrackInfo(day, batch);
     const track = isT2 ? 2 : 1;
-    const dayExtraLabs = extraLabs.get(`${day}::${track}`) ?? []; // NEW
+    const dayExtraLabs = extraLabs.get(`${day}::${track}`) ?? [];
     const slots = [];
     let pi = 0;
     while (pi < 8) {
       if (pi === LUNCH_PI) {
-        // Explicit placeholder — must still occupy a slot in the row so
-        // the column count matches the header (TIME_LABELS has one entry
-        // per period, lunch included). Previously this period was just
-        // skipped, which silently dropped a <td> from the row and shifted
-        // every later column left by one — the "lunch has lectures,
-        // everything's deranged" bug.
         slots.push({
           key: `${day}::${track}::${pi}::lunch`,
           day,
@@ -890,11 +837,6 @@ const InstituteView = ({ scheduleData, slotsData }) => {
         continue;
       }
 
-      // NEW — admin-added extra lab for this batch only. Checked before
-      // the fixed AM/PM lab so an extra lab that happens to start at the
-      // same period never gets shadowed by it (in practice they won't
-      // overlap — findFreeLabBlock/classifyLabStart both reserve the
-      // fixed lab's periods — but this keeps the ordering unambiguous).
       const extraBlock = dayExtraLabs.find((block) => block[0] === pi);
       if (extraBlock) {
         const slotKey = `${day}::${track}::${pi}::extralab`;
@@ -907,7 +849,7 @@ const InstituteView = ({ scheduleData, slotsData }) => {
           isExtraLab: true,
           slotName: null,
           isManual: true,
-          content: null, // resolved via pendingChanges/effectiveContent as usual
+          content: null,
           isMultiBatch: false,
         });
         pi = extraBlock[extraBlock.length - 1] + 1;
@@ -971,9 +913,7 @@ const InstituteView = ({ scheduleData, slotsData }) => {
         day: slot.day,
         track: slot.track,
         periods: slot.periods,
-        entry, // may include assignment_id — passed through unchanged so
-        // the backend can resolve the matching unplaced assignment
-        // instead of just writing an untracked manual override.
+        entry,
       });
       return next;
     });
@@ -1035,8 +975,8 @@ const InstituteView = ({ scheduleData, slotsData }) => {
 
   const handleCancelWeek = () => {
     setPendingChanges(new Map());
-    setExtraLabs(new Map()); // NEW
-    setLabPickMode(null); // NEW
+    setExtraLabs(new Map());
+    setLabPickMode(null);
     setDragError(null);
     setBatchEditMode(false);
   };
@@ -1065,25 +1005,10 @@ const InstituteView = ({ scheduleData, slotsData }) => {
     });
     if (result?.ok) {
       setPendingChanges(new Map());
-      setExtraLabs(new Map()); // NEW
+      setExtraLabs(new Map());
       setBatchEditMode(false);
     }
   };
-
-  // ── NEW — flexible extra-lab placement ──────────────────────────────────
-  //
-  // Two ways in: auto-place (scans for a genuinely free block of the given
-  // length) or manual pick (admin clicks the exact starting period). Both
-  // funnel into commitExtraLabBlock, which stages the block and opens the
-  // editor so the admin picks what goes in it.
-  //
-  // IMPORTANT: "free" here means NO existing entry at all for this batch
-  // in every period of the span — not just "not a joint session." The
-  // previous version only excluded multi-batch cells, which meant a
-  // perfectly ordinary single-batch lecture already sitting there looked
-  // "free" and got silently bumped underneath the new lab. Auto-place now
-  // only ever lands on genuinely empty periods; anything else requires the
-  // manual picker, where the admin can see and choose to override.
 
   const reservedPeriodsFor = (day, track) => {
     const batch = batchFilter;
@@ -1108,8 +1033,6 @@ const InstituteView = ({ scheduleData, slotsData }) => {
       if (span.includes(LUNCH_PI)) continue;
       if (span.some((p) => reserved.has(p))) continue;
 
-      // FIXED — any existing entry at all (not just multi-batch) makes
-      // this span unusable for AUTO placement.
       const occupied = span.some((p) => {
         const cell = map[p] ?? null;
         const entry = getEntryForBatchPeriod(batch, cell);
@@ -1122,11 +1045,6 @@ const InstituteView = ({ scheduleData, slotsData }) => {
     return null;
   };
 
-  // For a candidate start period in the manual picker: 'blocked' (spans
-  // lunch, another extra lab, the fixed AM/PM lab, runs off the day, or
-  // would touch a joint/multi-batch session — never clickable), 'occupied'
-  // (a single-batch class is there and would be bumped — clickable, shown
-  // distinctly), or 'free'.
   const classifyLabStart = (day, start, length) => {
     const batch = batchFilter;
     const { map, isT2 } = getDayTrackInfo(day, batch);
@@ -1144,7 +1062,7 @@ const InstituteView = ({ scheduleData, slotsData }) => {
       const entry = getEntryForBatchPeriod(batch, cell);
       if (entry) {
         if ((entry.batch_names ?? entry.batches ?? []).length > 1) {
-          return "blocked"; // joint session, never touch from here
+          return "blocked";
         }
         anyOccupied = true;
       }
@@ -1188,7 +1106,6 @@ const InstituteView = ({ scheduleData, slotsData }) => {
     commitExtraLabBlock(day, periods);
   };
 
-  // Remove an admin-added extra lab entirely (not just clear its content).
   const handleRemoveExtraLab = (slot) => {
     setExtraLabs((prev) => {
       const next = new Map(prev);
@@ -1212,7 +1129,10 @@ const InstituteView = ({ scheduleData, slotsData }) => {
 
     return (
       <div className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800">
+        <div
+          data-tour="institute-batch-edit-toolbar"
+          className="flex flex-wrap items-center gap-2 p-3 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800"
+        >
           <div className="flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-300 flex-1 min-w-0">
             <Info size={11} className="shrink-0" />
             <span>
@@ -1259,7 +1179,6 @@ const InstituteView = ({ scheduleData, slotsData }) => {
           </div>
         </div>
 
-        {/* NEW — batch name + unplaced badge above the warnings panel */}
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">
             {batch}
@@ -1273,7 +1192,10 @@ const InstituteView = ({ scheduleData, slotsData }) => {
           facultyName={facultyFilter || undefined}
         />
 
-        <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+        <div
+          className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm"
+          data-tour="institute-batch-edit-grid"
+        >
           <table
             className="border-collapse"
             style={{ minWidth: 720, width: "100%" }}
@@ -1307,7 +1229,7 @@ const InstituteView = ({ scheduleData, slotsData }) => {
                 const assignedT2 = isBatchOnTrack2(day, batch);
                 const canToggleThisDay = TOGGLE_DAYS.has(day);
                 const pendingOnThisDay = dayHasPendingChanges(day);
-                const pickingThisDay = labPickMode?.day === day; // NEW
+                const pickingThisDay = labPickMode?.day === day;
 
                 return (
                   <tr key={day}>
@@ -1330,8 +1252,6 @@ const InstituteView = ({ scheduleData, slotsData }) => {
                           )}
                         </div>
 
-                        {/* NEW — extra-lab controls: auto-place (2hr/3hr)
-                            or open the manual period picker for this day. */}
                         {pickingThisDay ? (
                           <div className="flex flex-wrap items-center gap-1">
                             {Array.from(
@@ -1499,9 +1419,6 @@ const InstituteView = ({ scheduleData, slotsData }) => {
                                   <XIcon size={8} />
                                 </button>
                               )}
-                              {/* NEW — extra labs can be removed entirely
-                                  (not just cleared), since the block itself
-                                  is admin-added and shouldn't linger empty. */}
                               {slot.isExtraLab && !locked && (
                                 <button
                                   onClick={(e) => {
@@ -1543,8 +1460,6 @@ const InstituteView = ({ scheduleData, slotsData }) => {
                               )}
                             </div>
                           ) : slot.isExtraLab ? (
-                            // NEW — empty extra-lab block: "+" to fill it,
-                            // a small trash icon to remove the block itself.
                             <div className="relative w-full h-full">
                               <button
                                 onClick={() => handleEditSlotClick(slot)}
@@ -1601,11 +1516,12 @@ const InstituteView = ({ scheduleData, slotsData }) => {
     );
   };
 
-  // ── RENDER ──────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
-      {/* Filter bar */}
-      <div className="flex items-center gap-4 flex-wrap rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-800/40 px-4 py-2.5">
+      <div
+        data-tour="institute-filters"
+        className="flex items-center gap-4 flex-wrap rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-800/40 px-4 py-2.5"
+      >
         <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
           Filter
         </span>
@@ -1625,6 +1541,13 @@ const InstituteView = ({ scheduleData, slotsData }) => {
           options={allFaculty}
           colorClass="violet"
         />
+
+        {!batchFilter && (
+          <span className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400 border border-sky-100 dark:border-sky-800">
+            <Info size={11} className="shrink-0" />
+            Filter by batch to edit that batch's timetable
+          </span>
+        )}
 
         {isFiltered && !batchEditMode && (
           <>
@@ -1650,6 +1573,7 @@ const InstituteView = ({ scheduleData, slotsData }) => {
         {canEditBatch && !batchEditMode && (
           <button
             onClick={() => setBatchEditMode(true)}
+            data-tour="institute-batch-edit-btn"
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
           >
             <Pencil size={12} />
@@ -1657,12 +1581,13 @@ const InstituteView = ({ scheduleData, slotsData }) => {
           </button>
         )}
       </div>
-
-      {batchEditMode
-        ? renderEditableBatchWeek()
-        : isFiltered
-          ? renderFilteredView()
-          : renderTimeGrid()}
+      <div data-tour="institute-grid">
+        {batchEditMode
+          ? renderEditableBatchWeek()
+          : isFiltered
+            ? renderFilteredView()
+            : renderTimeGrid()}
+      </div>
     </div>
   );
 };

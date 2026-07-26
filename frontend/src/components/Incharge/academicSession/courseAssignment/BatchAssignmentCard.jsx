@@ -42,6 +42,7 @@ const BatchAssignmentCard = ({
       {/* Batch header toggle */}
       <button
         onClick={onToggle}
+        data-tour="assignment-batch-header"
         className="w-full px-4 sm:px-6 py-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all"
       >
         <div className="flex items-center gap-3 flex-1">
@@ -169,7 +170,10 @@ const BatchAssignmentCard = ({
           </div>
 
           {/* Action bar */}
-          <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 flex flex-col sm:flex-row gap-3 justify-between items-center">
+          <div
+            data-tour="assignment-footer"
+            className="px-4 py-3 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 flex flex-col sm:flex-row gap-3 justify-between items-center"
+          >
             <button
               onClick={onAddRow}
               className="flex items-center justify-center gap-2 text-sm text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 font-medium transition-colors"

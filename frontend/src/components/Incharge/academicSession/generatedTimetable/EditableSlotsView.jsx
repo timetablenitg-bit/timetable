@@ -968,6 +968,7 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
 
           <button
             onClick={() => setLockMode((prev) => !prev)}
+            data-tour="slots-lock-btn"
             className={`flex items-center gap-1 text-[12px] px-2.5 py-1.5 rounded-lg transition-colors ${
               lockMode
                 ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300"
@@ -980,7 +981,7 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
           </button>
 
           {isEditing && (
-            <div className="relative">
+            <div className="relative" data-tour="slots-add-btn">
               <button
                 onClick={() => setSlotPickerOpen((v) => !v)}
                 disabled={isSavingSlots || addableLabels.length === 0}
@@ -1013,7 +1014,10 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
         </div>
       </div>
 
-      <div className="rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden">
+      <div
+        className="rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden"
+        data-tour="slots-grid"
+      >
         <table
           className="border-collapse table-fixed"
           style={{ width: "100%" }}
@@ -1093,7 +1097,7 @@ const EditableSlotsView = forwardRef(function EditableSlotsView(
                 >
                   <td className="px-3 py-2.5 text-[12px] font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800/60 align-top">
                     <div className="flex items-start gap-1.5">
-                      <span className="leading-tight break-words line-clamp-2">
+                      <span className="leading-tight wrap-break-word line-clamp-2">
                         {batch}
                       </span>
                       {batchesWithUnplaced.has(batch) && (

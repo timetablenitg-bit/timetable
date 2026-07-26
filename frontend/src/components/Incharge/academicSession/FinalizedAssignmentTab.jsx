@@ -286,7 +286,10 @@ const FinalizedAssignmentTab = ({ session }) => {
       )}
       <div className="space-y-4">
         {/* ── Receipt header ── */}
-        <div className="bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-gray-800 dark:to-gray-800/50 rounded-xl p-4 border border-emerald-100 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div
+          data-tour="finalized-receipt"
+          className="bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-gray-800 dark:to-gray-800/50 rounded-xl p-4 border border-emerald-100 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+        >
           <div>
             <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-1">
               Assignment Receipt
@@ -312,6 +315,7 @@ const FinalizedAssignmentTab = ({ session }) => {
             )}
             <button
               onClick={handleGenerate}
+              data-tour="generate-timetable-btn"
               disabled={generating}
               className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg shadow-sm transition-all hover:shadow-md"
             >
@@ -326,7 +330,7 @@ const FinalizedAssignmentTab = ({ session }) => {
         </div>
 
         {/* ── Batch groups (collapsible sections) ── */}
-        <div className="space-y-3">
+        <div className="space-y-3" data-tour="finalized-batch-groups">
           {sortedGroups.map(
             ({ displayName, batch, assignments, collapseKey }) => {
               const isCollapsed = collapsedSections.has(collapseKey);

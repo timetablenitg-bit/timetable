@@ -5,11 +5,14 @@ import SessionList from "./academicSession/SessionList";
 import CreateSessionModal from "./academicSession/CreateSessionModal";
 import SearchBar from "./GenerateTable/SearchBar";
 import useAdminStore from "../../store/admin/index";
+import TourButton from "../../tour/Tourbutton";
+import useTourAutostart from "../../tour/Usetourautostart";
 
 const GenerateTable = () => {
   const [filteredSessions, setFilteredSessions] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  useTourAutostart("generate");
 
   const {
     academicSessions,
@@ -109,6 +112,7 @@ const GenerateTable = () => {
           onSave={handleAddSession}
         />
       </div>
+      <TourButton view="generate" />
     </div>
   );
 };
