@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { X, Mail, Building, Hash, ToggleLeft, ToggleRight } from "lucide-react";
+import { X, Building, Hash, ToggleLeft, ToggleRight } from "lucide-react";
 
 const FacultyDetailModal = ({
   faculty,
@@ -89,7 +89,7 @@ const FacultyDetailModal = ({
 
           {/* Email */}
           <DetailField
-            icon={<Mail size={18} />}
+            icon={<Hash size={18} />}
             label="Email"
             value={isEditing ? formData.email : faculty.email || "N/A"}
             onChange={handleChange("email")}
@@ -178,20 +178,12 @@ const FacultyDetailModal = ({
               </button>
             </div>
           ) : (
-            <div className="flex flex-col sm:flex-row gap-3">
-              <a
-                href={`mailto:${faculty.email}`}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-medium transition-colors shadow-sm ${
-                  faculty.email
-                    ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                    : "bg-slate-300 dark:bg-slate-700 text-slate-500 cursor-not-allowed pointer-events-none"
-                }`}
-              >
-                <Mail size={18} />
-                Send Email
-              </a>
-              {/* You could add a second button if needed */}
-            </div>
+            <button
+              onClick={onClose}
+              className="w-full py-2.5 px-4 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium rounded-xl border border-slate-200 dark:border-slate-700 transition-colors"
+            >
+              Close
+            </button>
           )}
         </div>
       </div>

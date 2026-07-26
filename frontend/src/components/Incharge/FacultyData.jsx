@@ -6,33 +6,31 @@ import {
   X,
   Loader2,
   AlertCircle,
-  Mail,
   Edit,
   Trash2,
   CheckCircle,
   Clock,
   UserX,
 } from "lucide-react";
-import { toast } from "react-toastify";
 import CustomLoader from "../../ui/CustomLoader";
 
 // Badge component for invite status
-const InviteStatusBadge = ({ status }) => {
+const AccountStatusBadge = ({ status }) => {
   const config = {
     accepted: {
-      label: "Joined",
+      label: "Active",
       icon: <CheckCircle size={12} />,
       className:
         "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
     },
     pending: {
-      label: "Pending",
+      label: "Awaiting first login",
       icon: <Clock size={12} />,
       className:
         "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
     },
     uninvited: {
-      label: "Not Invited",
+      label: "No email on file",
       icon: <UserX size={12} />,
       className:
         "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400",
@@ -61,7 +59,6 @@ const FacultyData = () => {
     fetchUserByRole, // ← new store action
     deleteFaculty,
     updateFaculty,
-    inviteFaculty,
   } = useAdminStore();
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -149,33 +146,6 @@ const FacultyData = () => {
     const success = await deleteFaculty(faculty._id);
     setActionLoading(null);
     if (!success) alert("Failed to delete faculty.");
-  };
-
-  const handleInvite = async (faculty, e) => {
-    e.stopPropagation();
-    if (faculty.invite_status === "pending") {
-      toast.info(`${faculty.name} already has a pending invite.`);
-      return;
-    }
-    if (faculty.invite_status === "accepted") {
-      toast.info(`${faculty.name} has already joined.`);
-      return;
-    }
-    if (!faculty.email) {
-      toast.error(
-        `No email found for ${faculty.name}. Please edit and add one first.`,
-      );
-      return;
-    }
-    setActionLoading(faculty._id);
-    const result = await inviteFaculty(faculty._id);
-    setActionLoading(null);
-    if (result.success) {
-      toast.success(`Invite sent to ${faculty.email}!`);
-      fetchUserByRole("faculty"); // ← refresh status after invite
-    } else {
-      toast.error(result.message || "Failed to send invite.");
-    }
   };
 
   if (isLoading) {
@@ -320,39 +290,11 @@ const FacultyData = () => {
 
                   {/* ← Invite status badge */}
                   <div className="md:col-span-2 flex items-center">
-                    <InviteStatusBadge status={fac.invite_status} />
+                    <AccountStatusBadge status={fac.invite_status} />
                   </div>
 
                   {/* Actions */}
                   <div className="md:col-span-4 flex items-center justify-start md:justify-end gap-1">
-                    <button
-                      onClick={(e) => handleInvite(fac, e)}
-                      disabled={
-                        actionLoading === fac._id ||
-                        fac.invite_status === "accepted"
-                      }
-                      className={`p-2 rounded-lg transition-colors disabled:opacity-50 ${
-                        fac.invite_status === "accepted"
-                          ? "text-emerald-500 dark:text-emerald-400 cursor-not-allowed"
-                          : fac.invite_status === "pending"
-                            ? "text-amber-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20"
-                            : "text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 dark:text-slate-400 dark:hover:text-emerald-400"
-                      }`}
-                      title={
-                        fac.invite_status === "accepted"
-                          ? "Already joined"
-                          : fac.invite_status === "pending"
-                            ? "Invite pending — click to resend"
-                            : "Send invite"
-                      }
-                    >
-                      {actionLoading === fac._id ? (
-                        <Loader2 size={18} className="animate-spin" />
-                      ) : (
-                        <Mail size={18} />
-                      )}
-                    </button>
-
                     <button
                       onClick={(e) => handleEdit(fac, e)}
                       className="p-2 rounded-lg text-slate-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 dark:text-slate-400 dark:hover:text-amber-400 transition-colors"

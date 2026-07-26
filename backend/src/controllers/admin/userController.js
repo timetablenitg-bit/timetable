@@ -133,3 +133,34 @@ export const fetchUserByRole = async (req, res) => {
     });
   }
 };
+
+export const deleteUsersByBatch = async (req, res) => {
+  try {
+    const { department, current_sem } = req.body;
+
+    if (!department || !current_sem) {
+      return res.status(400).json({
+        success: false,
+        message: "department and current_sem are required",
+      });
+    }
+
+    const result = await User.deleteMany({
+      department,
+      current_sem: Number(current_sem),
+      role: "student",
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Deleted ${result.deletedCount} student(s) from ${department} · semester ${current_sem}`,
+      deletedCount: result.deletedCount,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete users by batch",
+      error: error.message,
+    });
+  }
+};

@@ -4,6 +4,7 @@ import {
   deleteUser,
   updateUserRole,
   deleteUserBySemester,
+  deleteUsersByBatch,
   fetchUserByRole,
 } from "../../controllers/admin/userController.js";
 import { protect, authorizeRoles } from "../../middleware/authMiddleware.js";
@@ -20,5 +21,11 @@ router.post(
 );
 router.put("/:id", protect, authorizeRoles("admin"), updateUserRole);
 router.delete("/:id", protect, authorizeRoles("admin"), deleteUser);
+router.post(
+  "/delete-batch",
+  protect,
+  authorizeRoles("admin"),
+  deleteUsersByBatch,
+);
 
 export default router;

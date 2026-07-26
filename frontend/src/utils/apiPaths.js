@@ -6,14 +6,11 @@ export const API_PATHS = {
     LOGIN: "/api/v1/auth/login",
     REGISTER: "/api/v1/auth/register",
     GOOGLE_LOGIN: "/api/v1/auth/google",
-    ACCEPT_INVITE: "/api/v1/auth/accept-invite",
     SETUP: "/api/v1/auth/setupProfile",
     GETME: "/api/v1/auth/getMe",
-    INVITE: "/api/v1/auth/invite-faculty",
   },
 
   ADMIN: {
-    INVITE_FACULTY: "/api/v1/admin/invite-faculty",
     COURSE_REGISTRATION_OVERVIEW: (session_id) =>
       `/api/v1/admin/course-registration/overview/${session_id}`,
     BACKLOG_STATS: (session_id) =>
@@ -33,6 +30,7 @@ export const API_PATHS = {
     DELETE: (id) => `api/v1/admin/users/${id}`,
     DELETE_BY_SEMESTER: (current_sem) =>
       `api/v1/admin/users/delete/${current_sem}`,
+    DELETE_BY_BATCH: "api/v1/admin/users/delete-batch",
   },
 
   ACADEMIC_SESSION: {

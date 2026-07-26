@@ -215,7 +215,6 @@ const EditSessionModal = ({ session, activeSession, onClose, onSave }) => {
             </div>
           </div>
 
-          {/* Status */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Status *
@@ -228,13 +227,23 @@ const EditSessionModal = ({ session, activeSession, onClose, onSave }) => {
                   setFormData({ ...formData, isActive: e.target.value })
                 }
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 
-                         rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent
-                         dark:bg-gray-700 dark:text-white transition-all cursor-pointer"
+               rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent
+               dark:bg-gray-700 dark:text-white transition-all cursor-pointer"
               >
                 <option value="true">Active</option>
                 <option value="false">Inactive</option>
               </select>
             </div>
+            <p className="mt-2 text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1.5">
+              <span>⚠️</span>
+              <span>
+                Activating a session recalculates every student's semester off
+                of it. Only set the{" "}
+                <span className="font-semibold">next session in order</span> to
+                Active — activating out of sequence will assign students the
+                wrong semester.
+              </span>
+            </p>
           </div>
 
           {/* Server Error */}

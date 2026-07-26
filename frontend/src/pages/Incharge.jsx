@@ -25,6 +25,7 @@ import AcademicSession from "../components/Incharge/academicSession/AcademicSess
 import { useAuthStore } from "../store/useAuthStore";
 import FeedbackList from "../components/Incharge/FeedbackList";
 import AdminManagement from "../components/Incharge/AdminManagement";
+import UsersSection from "../components/Incharge/UserManagement.jsx/UsersSection";
 
 const Incharge = () => {
   const [openSidebar, setOpenSidebar] = useState(false);
@@ -55,6 +56,8 @@ const Incharge = () => {
         return <Batch />;
       case "feedback":
         return <FeedbackList />;
+      case "users":
+        return <UsersSection />;
       case "academicSession":
         return (
           <AcademicSession
@@ -74,6 +77,7 @@ const Incharge = () => {
     { key: "timetable", label: "Time Table", icon: Table },
     { key: "adminManagement", label: "Admin Management", icon: ShieldCheck },
     { key: "faculty", label: "Faculty Directory", icon: Users },
+    { key: "users", label: "Users", icon: Users },
     { key: "course", label: "Course Management", icon: BookOpen },
     { key: "batch", label: "Batch Management", icon: Layers },
     { key: "feedback", label: "Student Feedback", icon: MessageSquare },

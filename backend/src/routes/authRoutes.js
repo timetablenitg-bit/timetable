@@ -19,7 +19,7 @@ router.post("/setupProfile", protect, setUpProfile);
 router.post("/logout", protect, logout);
 router.post("/login", login);
 router.post("/register", register);
-router.post("/invite-faculty", protect, authorizeRoles("admin"), inviteFaculty); // admin only
-router.post("/accept-invite", acceptInvite);
+// router.post("/invite-faculty", protect, authorizeRoles("admin"), inviteFaculty); // admin only
+// router.post("/accept-invite", acceptInvite);
 
 export default router;

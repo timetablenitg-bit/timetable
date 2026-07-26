@@ -1,5 +1,13 @@
 import React, { useState } from "react";
-import { Edit2, Trash2, Calendar, BookOpen, XCircle, X } from "lucide-react";
+import {
+  Edit2,
+  Trash2,
+  Calendar,
+  BookOpen,
+  XCircle,
+  X,
+  AlertTriangle,
+} from "lucide-react";
 import EditSessionModal from "./EditSessionModal";
 import AcademicSession from "./AcademicSession";
 
@@ -52,6 +60,18 @@ const SessionList = ({ sessions, onEdit, onDelete }) => {
   };
   return (
     <>
+      {/* Order-of-activation warning */}
+      <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-4 py-3">
+        <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+        <p className="text-xs sm:text-sm text-amber-700 dark:text-amber-400">
+          <span className="font-semibold">Heads up:</span> marking a session
+          "Active" shifts every student's current semester and year to match it.
+          Only activate the session that comes{" "}
+          <span className="font-semibold">immediately next</span> after the one
+          that's currently active — skipping ahead or jumping backward out of
+          order will leave students on the wrong semester.
+        </p>
+      </div>
       <div className="space-y-4 animate-fadeInUp" data-tour="session-list">
         {sessions.map((session) => (
           <div

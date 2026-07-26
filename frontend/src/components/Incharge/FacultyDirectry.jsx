@@ -15,6 +15,7 @@ const FacultyDirectry = () => {
         faculty_code: faculty.facultyId,
         name: faculty.name,
         department: faculty.department,
+        email: faculty.email || undefined,
       });
       if (!result.success) throw new Error(result.message);
     } else {

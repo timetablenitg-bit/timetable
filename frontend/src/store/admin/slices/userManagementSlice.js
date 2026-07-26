@@ -97,4 +97,33 @@ export const createUserManagementSlice = (set) => ({
       toast.error(message);
     }
   },
+  deleteUsersByBatch: async (department, current_sem) => {
+    set({ isLoading: true, error: null });
+    try {
+      const res = await axiosInstance.post(API_PATHS.USER.DELETE_BY_BATCH, {
+        department,
+        current_sem,
+      });
+      set((state) => ({
+        users: state.users.filter(
+          (u) =>
+            !(
+              u.role === "student" &&
+              u.department === department &&
+              u.current_sem === current_sem
+            ),
+        ),
+        isLoading: false,
+      }));
+      toast.success(res.data.message);
+      return { success: true };
+    } catch (error) {
+      const message =
+        error.response?.data?.message ||
+        "Failed to delete this batch's students";
+      set({ error: message, isLoading: false });
+      toast.error(message);
+      return { success: false, message };
+    }
+  },
 });

@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { Faculty } from "../../models/facultyModel.js";
+import User from "../../models/userModel.js";
 
 export const fetchFaculties = async (req, res) => {
   try {
@@ -20,7 +21,7 @@ export const fetchFaculties = async (req, res) => {
 
 export const createFaculty = async (req, res) => {
   try {
-    const { faculty_code, name, department } = req.body;
+    const { faculty_code, name, department, email } = req.body;
 
     if (!faculty_code || !name || !department) {
       return res.status(400).json({
@@ -33,7 +34,10 @@ export const createFaculty = async (req, res) => {
       faculty_code,
       name,
       department,
+      ...(email && { email }),
     });
+
+    await provisionFacultyAccount(faculty);
 
     res.status(201).json({
       success: true,
@@ -46,7 +50,7 @@ export const createFaculty = async (req, res) => {
     if (error.code === 11000) {
       return res.status(409).json({
         success: false,
-        message: "Faculty with this code already exists",
+        message: "Faculty with this code or email already exists",
       });
     }
 
@@ -128,6 +132,8 @@ export const updateFaculty = async (req, res) => {
       });
     }
 
+    await provisionFacultyAccount(updatedFaculty);
+
     res.status(200).json({
       success: true,
       message: "Faculty updated successfully",
@@ -139,7 +145,7 @@ export const updateFaculty = async (req, res) => {
     if (error.code === 11000) {
       return res.status(409).json({
         success: false,
-        message: "Faculty with this code already exists",
+        message: "Faculty with this code or email already exists",
       });
     }
 
@@ -172,6 +178,14 @@ export const deleteFaculty = async (req, res) => {
       });
     }
 
+    if (deletedFaculty.email) {
+      await User.deleteOne({
+        email: deletedFaculty.email,
+        role: "faculty",
+        invite_status: { $ne: "accepted" },
+      });
+    }
+
     res.status(200).json({
       success: true,
       message: "Faculty deleted successfully",
@@ -200,9 +214,8 @@ export const createFaculties = async (req, res) => {
     const errors = [];
 
     rows.forEach((row, index) => {
-      const { faculty_code, name, department, is_active } = row;
+      const { faculty_code, name, department, is_active, email } = row;
 
-      // Required fields
       if (!faculty_code || !name) {
         errors.push({
           row: index + 1,
@@ -217,6 +230,7 @@ export const createFaculties = async (req, res) => {
         name: String(name).trim(),
         department: department || null,
         is_active: is_active !== undefined ? Boolean(is_active) : true,
+        ...(email && { email: String(email).trim() }),
       });
     });
     // console.log(validDocs);
@@ -240,6 +254,7 @@ export const createFaculties = async (req, res) => {
       insertedDocs = err.insertedDocs || [];
     }
     // console.log("Inserted docs:", insertedDocs);
+    await Promise.all(insertedDocs.map((f) => provisionFacultyAccount(f)));
 
     res.status(201).json({
       success: true,
@@ -260,3 +275,35 @@ export const createFaculties = async (req, res) => {
     });
   }
 };
+// Silently provisions/refreshes the login account for a faculty member
+// once they have an email on file — no invite email needed. The account
+// stays "pending" until they actually sign in with Google, at which point
+// googleLogin() (unchanged) flips it to "accepted".
+async function provisionFacultyAccount(faculty) {
+  if (!faculty.email) return;
+
+  const existing = await User.findOne({ email: faculty.email });
+
+  if (!existing) {
+    await User.create({
+      username: faculty.name,
+      email: faculty.email,
+      role: "faculty",
+      faculty_code: faculty.faculty_code,
+      department: faculty.department,
+      authProvider: "google",
+      invite_status: "pending",
+    });
+    return;
+  }
+
+  // Only touch accounts that are already faculty-shaped, so we never
+  // clobber some unrelated student/admin account that happens to share
+  // this email, and never reset someone who has already joined.
+  if (existing.role === "faculty" && existing.invite_status !== "accepted") {
+    existing.faculty_code = faculty.faculty_code;
+    existing.department = faculty.department;
+    existing.invite_status = "pending";
+    await existing.save();
+  }
+}
