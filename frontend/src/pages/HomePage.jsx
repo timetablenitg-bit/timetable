@@ -1,6 +1,14 @@
 import React, { useState, useEffect } from "react";
 // Removed the external import causing the error
-import { Menu, X, ArrowRight, Calendar, Clock, Zap } from "lucide-react";
+import {
+  Menu,
+  X,
+  ArrowRight,
+  Calendar,
+  Clock,
+  Zap,
+  Github,
+} from "lucide-react";
 
 const HomePage = () => {
   // Inline the document title logic
@@ -13,6 +21,9 @@ const HomePage = () => {
   const toggleMenu = () => {
     setIsMenuOpen(!isMenuOpen);
   };
+
+  // 👉 Update this to your actual repo URL
+  const GITHUB_REPO_URL = "https://github.com/timetablenitg-bit/timetable.git";
 
   return (
     <div className="min-h-screen w-full bg-[#0f172a] text-white relative overflow-x-hidden selection:bg-cyan-500/30">
@@ -49,22 +60,17 @@ const HomePage = () => {
               </span>
             </a>
 
-            {/* Desktop Menu Links */}
-            <div className="hidden md:flex items-center space-x-8">
-              {["Documentation", "About Us", "Contact"].map((item) => (
-                <a
-                  key={item}
-                  href={`#${item.toLowerCase().replace(" ", "")}`}
-                  className="text-sm font-medium text-gray-300 hover:text-cyan-400 transition-colors duration-300 relative group"
-                >
-                  {item}
-                  <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-cyan-500 transition-all duration-300 group-hover:w-full"></span>
-                </a>
-              ))}
-            </div>
-
-            {/* Desktop Login/Signup */}
+            {/* Desktop Login/Signup + GitHub */}
             <div className="hidden md:flex items-center space-x-4">
+              <a
+                href={GITHUB_REPO_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800 transition-all text-sm font-semibold"
+              >
+                <Github size={18} />
+                <span>GitHub</span>
+              </a>
               <a
                 href="/login"
                 className="group relative px-5 py-2.5 bg-linear-to-r from-cyan-600 to-blue-600 rounded-lg font-semibold text-sm shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/40 hover:-translate-y-0.5 transition-all duration-300 overflow-hidden"
@@ -93,15 +99,15 @@ const HomePage = () => {
           }`}
         >
           <div className="px-4 pt-2 pb-6 space-y-2">
-            {["Documentation", "About Us", "Contact"].map((item) => (
-              <a
-                key={item}
-                href={`#${item.toLowerCase().replace(" ", "")}`}
-                className="block py-3 px-4 rounded-lg text-base font-medium text-gray-300 hover:bg-gray-800 hover:text-cyan-400 transition-all"
-              >
-                {item}
-              </a>
-            ))}
+            <a
+              href={GITHUB_REPO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 py-3 px-4 rounded-lg text-base font-medium text-gray-300 hover:bg-gray-800 hover:text-cyan-400 transition-all"
+            >
+              <Github size={18} />
+              GitHub
+            </a>
             <div className="pt-4 grid grid-cols-2 gap-3">
               <a
                 href="/login"
@@ -153,10 +159,13 @@ const HomePage = () => {
             />
           </a>
           <a
-            href="#documentation"
+            href={GITHUB_REPO_URL}
+            target="_blank"
+            rel="noopener noreferrer"
             className="flex items-center justify-center gap-2 px-8 py-3.5 bg-gray-800/50 border border-gray-700 text-white rounded-xl font-semibold hover:bg-gray-800 transition-all backdrop-blur-sm"
           >
-            Read Docs
+            <Github size={18} />
+            View on GitHub
           </a>
         </div>
 
